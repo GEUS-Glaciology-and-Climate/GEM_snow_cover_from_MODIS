@@ -1,0 +1,22 @@
+name: modis_scf
+channels:
+  - conda-forge
+dependencies:
+  - python=3.12
+  - xarray
+  - rioxarray
+  - geopandas
+  - earthaccess
+  - netcdf4
+  - dask
+  - h5py
+  - hdf4
+  - shapely
+  - pandas
+  - matplotlib
+  - numpy
+  - bottleneck
+  - libgdal-hdf4
+  - pymannkendall
+  - pingouin
+  - statsmodels
