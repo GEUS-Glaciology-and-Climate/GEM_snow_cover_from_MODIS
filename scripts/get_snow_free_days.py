@@ -287,3 +287,6 @@ for thresh in thresholds:
 mast_csv_path = csv_out_dir / f"mast_pixel_snow_{station}.csv"
 mast_df.to_csv(mast_csv_path, index=False)
 print(f"  Saved: {mast_csv_path}")
+
+mast_df.plot()
+plt.show()

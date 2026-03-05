@@ -17,3 +17,4 @@ ice_shp: /home/shl/mdrev/data/sdfi/G250_VEKTOR/Is.shp
 # In situ validation
 station_id: zackenberg
 aws_stations: data/CARRA/AWS_station_locations.csv
+gem_dir: /home/shl/mdrev/data/GEM/zackenberg/
