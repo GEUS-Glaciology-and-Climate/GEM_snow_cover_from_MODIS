@@ -20,3 +20,4 @@ dependencies:
   - pymannkendall
   - pingouin
   - statsmodels
+  - pyyaml

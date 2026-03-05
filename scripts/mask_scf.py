@@ -12,9 +12,11 @@ Logic:
               cloud_persistence_masked   = cloud persistence for ice-free land only
 
 Usage:
-    python mask_scf.py
+    python scripts/mask_scf.py --site zackenberg
 """
 
+import argparse
+import yaml
 import xarray as xr
 import numpy as np
 import geopandas as gpd
@@ -22,20 +24,24 @@ from rasterio.features import rasterize
 from rasterio.transform import Affine
 from pathlib import Path
 
-# --- Config ---
-workingdir = Path("/home/shl/mdrev/projects/modis/snow_cover")
-fig_dir = workingdir / "figures" / "zackenberg"
-nc_dir = workingdir / "netcdf" / "zackenberg"
-out_nc_dir = workingdir / "netcdf" / "zackenberg_masked"
+# --- Args ---
+parser = argparse.ArgumentParser()
+parser.add_argument("--site", required=True, help="Site name matching a config/<site>.yml")
+args = parser.parse_args()
 
-fig_dir.mkdir(parents=True, exist_ok=True)
+with open(f"config/{args.site}.yml") as f:
+    cfg = yaml.safe_load(f)
 
-land_shp = Path("/home/shl/mdrev/data/sdfi/G250_VEKTOR/Land.shp")
-ice_shp = Path("/home/shl/mdrev/data/sdfi/G250_VEKTOR/Is.shp")
+site       = cfg["site"]
+nc_dir     = Path(f"netcdf/{site}/")
+out_nc_dir = Path(f"netcdf/{site}_masked/")
+out_nc_dir.mkdir(parents=True, exist_ok=True)
 
-target_epsg = 32627  # Zackenberg UTM zone
-mask_epsg = 32624    # Source CRS of the shapefiles
-variable = "snow_cover_fraction"
+land_shp = Path(cfg["land_shp"])
+ice_shp  = Path(cfg["ice_shp"])
+
+target_epsg = cfg["target_epsg"]
+variable    = "snow_cover_fraction"
 
 # --- Load and reproject shapefiles ---
 print("Loading and reprojecting shapefiles...")
@@ -66,7 +72,7 @@ def make_mask(gdf, x_coords, y_coords):
     return mask.astype(bool)
 
 # --- Process each annual NetCDF ---
-nc_files = sorted(nc_dir.glob("zackenberg_scf_*.nc"))
+nc_files = sorted(nc_dir.glob(f"{site}_scf_*.nc"))
 if not nc_files:
     raise FileNotFoundError(f"No NetCDF files found in {nc_dir}")
 

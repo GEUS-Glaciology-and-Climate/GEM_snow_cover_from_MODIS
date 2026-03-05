@@ -9,20 +9,37 @@ Also computes annual cloud persistence statistics (mean, std, min, max)
 as a data quality indicator for the gap-filling.
 
 Usage:
-    python analyse_snow_free_days.py
+    python scripts/get_snow_free_days.py --site zackenberg
 
 """
 
+import argparse
+import yaml
 import xarray as xr
 import numpy as np
 import matplotlib.pyplot as plt
+import pandas as pd
+import geopandas as gpd
 from pathlib import Path
 
-# --- Config ---
-nc_dir = Path("./netcdf/zackenberg_masked/")
-out_dir = Path("./figures/zackenberg/")
-csv_out_dir = Path("./csvs/zackenberg/")
-latex_dir = Path("./results/latex/")
+# --- Args ---
+parser = argparse.ArgumentParser()
+parser.add_argument("--site", required=True, help="Site name matching a config/<site>.yml")
+args = parser.parse_args()
+
+with open(f"config/{args.site}.yml") as f:
+    cfg = yaml.safe_load(f)
+
+site        = cfg["site"]
+target_epsg = cfg["target_epsg"]
+station     = cfg["station_id"]
+
+nc_dir        = Path(f"netcdf/{site}_masked/")
+out_dir       = Path(f"figures/{site}/")
+csv_out_dir   = Path(f"results/csvs/{site}/")
+latex_dir     = Path("results/latex/")
+aws_stations_path = Path(cfg["aws_stations"])
+
 out_dir.mkdir(parents=True, exist_ok=True)
 csv_out_dir.mkdir(parents=True, exist_ok=True)
 latex_dir.mkdir(parents=True, exist_ok=True)
@@ -31,7 +48,7 @@ thresholds = [10, 20, 30, 40, 50, 60, 70]
 variable = "snow_cover_fraction_masked"
 
 # --- Load all annual NetCDFs into one dataset ---
-nc_files = sorted(nc_dir.glob("zackenberg_scf_*.nc"))
+nc_files = sorted(nc_dir.glob(f"{site}_scf_*.nc"))
 if not nc_files:
     raise FileNotFoundError(f"No NetCDF files found in {nc_dir}")
 
@@ -90,7 +107,7 @@ for thresh, color in zip(thresholds, colors):
 
 ax.set_xlabel("Year")
 ax.set_ylabel("Mean snow-free days per year")
-ax.set_title("Zackenberg: Snow-Free Days by NDSI Threshold")
+ax.set_title("{site.capitalize()}: Snow-Free Days by NDSI Threshold")
 ax.legend(title="Threshold", bbox_to_anchor=(1.02, 1), loc="upper left")
 ax.grid(True, alpha=0.3)
 ax.set_xlim(years_used[0], years_used[-1])
@@ -151,7 +168,7 @@ with open(latex_path, "w") as f:
     f.write("\\begin{table}[ht]\n")
     f.write("\\centering\n")
     f.write("\\caption{Mean snow-free days per year by NDSI threshold, "
-            "Zackenberg.}\n")
+            f"{site.capitalize()}.}}\n")
     f.write("\\label{tab:sfd_summary}\n")
     f.write("\\begin{tabular}{lrrrr}\n")
     f.write("\\hline\n")
@@ -173,7 +190,7 @@ with open(cp_latex_path, "w") as f:
     f.write("\\begin{table}[ht]\n")
     f.write("\\centering\n")
     f.write("\\caption{Annual cloud persistence statistics (ice-free land pixels), "
-            "Zackenberg. Values indicate the number of days of gap-filling applied; "
+            f"{site.capitalize()}. Values indicate the number of days of gap-filling applied; "
             "0 = directly observed.}\n")
     f.write("\\label{tab:cloud_persistence}\n")
     f.write("\\begin{tabular}{lrrr}\n")
@@ -235,9 +252,38 @@ fig_ov.text(0.01, 0.5, "Mean SCF (%)", va="center", rotation="vertical",
 fig_ov.text(0.99, 0.5, "Mean cloud persistence (days)", va="center",
             rotation="vertical", color=color_cp, fontsize=10)
 
-fig_ov.suptitle("Zackenberg: Daily mean SCF and cloud persistence per year",
+fig_ov.suptitle(f"{site.capitalize()}: Daily mean SCF and cloud persistence per year",
                 fontsize=12, y=1.01)
 fig_ov.tight_layout()
 fig_ov.savefig(out_dir / "scf_cloud_persistence_overview.png", dpi=150,
                bbox_inches="tight")
 print(f"Saved supplementary overview plot")
+
+# ============================================================
+# 5. Mast pixel extraction: snow/no-snow time series at AWS location
+# ============================================================
+print("\nExtracting mast pixel time series...")
+
+# Load station coordinates and reproject to MODIS grid CRS
+aws = pd.read_csv(aws_stations_path)
+row = aws[aws["stid"] == station].iloc[0]
+gdf = gpd.GeoDataFrame([row], geometry=gpd.points_from_xy([row.lon], [row.lat]),
+                        crs="EPSG:4326").to_crs(epsg=target_epsg)
+mast_x = float(gdf.geometry.x.iloc[0])
+mast_y = float(gdf.geometry.y.iloc[0])
+print(f"  {station} mast position: x={mast_x:.1f}, y={mast_y:.1f} (EPSG:{target_epsg})")
+
+# Extract the single nearest pixel across the full time series
+pixel = da.sel(x=mast_x, y=mast_y, method="nearest")
+print(f"  Nearest MODIS pixel: x={float(pixel.x):.1f}, y={float(pixel.y):.1f}")
+
+# Build output dataframe: date, raw SCF value, snow flag per threshold
+mast_df = pd.DataFrame({"date": pixel.time.values, "scf": pixel.values})
+for thresh in thresholds:
+    mast_df[f"snow_lt{thresh}"] = (mast_df["scf"] < thresh).astype("Int64")
+    # Set to NA where SCF was invalid (NaN)
+    mast_df.loc[mast_df["scf"].isna(), f"snow_lt{thresh}"] = pd.NA
+
+mast_csv_path = csv_out_dir / f"mast_pixel_snow_{station}.csv"
+mast_df.to_csv(mast_csv_path, index=False)
+print(f"  Saved: {mast_csv_path}")
