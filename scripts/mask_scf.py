@@ -9,6 +9,7 @@ Logic:
     - Keep pixels inside land polygons
     - Remove pixels inside ice polygons
     - Result: snow_cover_fraction_masked = SCF for ice-free land only
+              cloud_persistence_masked   = cloud persistence for ice-free land only
 
 Usage:
     python mask_scf.py
@@ -22,9 +23,12 @@ from rasterio.transform import Affine
 from pathlib import Path
 
 # --- Config ---
-nc_dir = Path("./netcdf/zackenberg/")
-out_dir = Path("./netcdf/zackenberg_masked/")
-out_dir.mkdir(parents=True, exist_ok=True)
+workingdir = Path("/home/shl/mdrev/projects/modis/snow_cover")
+fig_dir = workingdir / "figures" / "zackenberg"
+nc_dir = workingdir / "netcdf" / "zackenberg"
+out_nc_dir = workingdir / "netcdf" / "zackenberg_masked"
+
+fig_dir.mkdir(parents=True, exist_ok=True)
 
 land_shp = Path("/home/shl/mdrev/data/sdfi/G250_VEKTOR/Land.shp")
 ice_shp = Path("/home/shl/mdrev/data/sdfi/G250_VEKTOR/Is.shp")
@@ -105,10 +109,20 @@ for nc_path in nc_files:
         "Masked to ice-free land using land.shp and is.shp"
     )
 
-    out_path = out_dir / nc_path.name
+    masked_cp = ds["cloud_persistence"].where(valid_mask)
+    ds["cloud_persistence_masked"] = masked_cp
+    ds["cloud_persistence_masked"].attrs = ds["cloud_persistence"].attrs.copy()
+    ds["cloud_persistence_masked"].attrs["long_name"] = (
+        "Cloud Persistence (ice-free land only)"
+    )
+    ds["cloud_persistence_masked"].attrs["mask_info"] = (
+        "Masked to ice-free land using land.shp and is.shp"
+    )
+
+    out_path = out_nc_dir / nc_path.name
     ds.to_netcdf(out_path)
     ds.close()
     print(f"  -> {out_path}")
 
 print("\nDone. Original files untouched in:", nc_dir)
-print("Masked files written to:", out_dir)
+print("Masked files written to:", out_nc_dir)
