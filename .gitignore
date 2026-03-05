@@ -1,5 +1,6 @@
 # Editor backup files
 *~
+\#*\#
 
 # Data (large binaries, not tracked)
 data/CARRA/*.nc
