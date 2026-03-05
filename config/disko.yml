@@ -1,0 +1,19 @@
+site: disko
+aoi: shp/disko_aoi_v2.shp
+target_epsg: 32622
+
+# Raw HDF download destination
+hdf_dir: /mnt/glaciologi/GEM/remote_sensing_and_modelling/data/MODIS_CGF_SCF/disko/
+
+# MODIS product and time range
+modis_product: MOD10A1F
+temporal_start: "2000-02-24"
+temporal_end: "2025-12-31"
+
+# Masking shapefiles
+land_shp: /home/shl/mdrev/data/sdfi/G250_VEKTOR/Land.shp
+ice_shp: /home/shl/mdrev/data/sdfi/G250_VEKTOR/Is.shp
+
+# In situ validation
+station_id: disko
+aws_stations: data/CARRA/AWS_station_locations.csv
