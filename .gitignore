@@ -3,7 +3,7 @@
 \#*\#
 
 # Data (large binaries, not tracked)
-data/CARRA/*.nc
+data/
 netcdf/
 shp/
 
