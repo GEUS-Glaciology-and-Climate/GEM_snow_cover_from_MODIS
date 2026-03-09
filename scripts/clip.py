@@ -51,17 +51,18 @@ def parse_date(path):
         return datetime.strptime(m.group(1), "%Y%j")
     raise ValueError(f"Cannot parse date from {path.name}")
 
-def open_and_reproject(hdf_path, variable, target_epsg):
-    ds = rioxarray.open_rasterio(
+def open_native(hdf_path, variable):
+    """Open a single HDF tile in its native MODIS Sinusoidal CRS."""
+    return rioxarray.open_rasterio(
         f'HDF4_EOS:EOS_GRID:"{hdf_path}":MOD_Grid_Snow_500m:{variable}'
     )
-    return ds.rio.reproject(f"EPSG:{target_epsg}")
 
 def mosaic_and_clip(hdf_files, variable, aoi, target_epsg):
-    """Open one or more tiles for the same date, mosaic if needed, clip to AOI."""
-    arrays = [open_and_reproject(f, variable, target_epsg) for f in hdf_files]
+    """Open tiles in native CRS, mosaic, reproject once, then clip to AOI."""
+    arrays = [open_native(f, variable) for f in hdf_files]
     merged = merge_arrays(arrays) if len(arrays) > 1 else arrays[0]
-    clipped = merged.rio.clip(aoi.geometry, aoi.crs)
+    reprojected = merged.rio.reproject(f"EPSG:{target_epsg}")
+    clipped = reprojected.rio.clip(aoi.geometry, aoi.crs)
     return clipped.squeeze(drop=True)
 
 # --- Group HDF files by year, then by date ---
@@ -100,8 +101,8 @@ for year, year_iter in groupby(hdf_files, key=lambda f: parse_date(f).year):
         print(f"  No valid data for {year}, skipping")
         continue
 
-    da_scf   = xr.concat(arrays_scf,   dim="time").assign_coords(time=times).sortby("time")
-    da_cloud = xr.concat(arrays_cloud, dim="time").assign_coords(time=times).sortby("time")
+    da_scf   = xr.concat(arrays_scf,   dim="time", join="override").assign_coords(time=times).sortby("time")
+    da_cloud = xr.concat(arrays_cloud, dim="time", join="override").assign_coords(time=times).sortby("time")
 
     ds_out = da_scf.to_dataset(name="snow_cover_fraction")
     ds_out["cloud_persistence"] = da_cloud

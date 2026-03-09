@@ -19,6 +19,9 @@ mask:
 snow-free-days:
 	$(PYTHON) scripts/get_snow_free_days.py --site $(SITE)
 
+terrain:
+	$(PYTHON) scripts/get_terrain.py --site $(SITE)
+
 preprocess: clip mask
 
 # ============================================================
@@ -52,6 +55,6 @@ download-zackenberg:
 download-disko:
 	$(PYTHON) scripts/download.py --site disko
 
-.PHONY: download clip mask snow-free-days preprocess \
+.PHONY: download clip mask snow-free-days terrain preprocess \
         derive-climate trends driver-trends correlations regression analyse \
         download-zackenberg download-disko

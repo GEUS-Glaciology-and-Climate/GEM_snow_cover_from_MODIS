@@ -21,3 +21,4 @@ dependencies:
   - pingouin
   - statsmodels
   - pyyaml
+  - s3fs
