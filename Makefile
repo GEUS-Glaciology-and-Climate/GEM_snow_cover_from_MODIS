@@ -28,6 +28,9 @@ preprocess: clip mask
 # Analysis (Zackenberg only for now)
 # ============================================================
 
+elevation-bands:
+	$(PYTHON) scripts/analyse_elevation_bands.py --site $(SITE)
+
 derive-climate:
 	$(PYTHON) scripts/derive_climate_predictors.py
 
@@ -55,6 +58,6 @@ download-zackenberg:
 download-disko:
 	$(PYTHON) scripts/download.py --site disko
 
-.PHONY: download clip mask snow-free-days terrain preprocess \
+.PHONY: download clip mask snow-free-days terrain elevation-bands preprocess \
         derive-climate trends driver-trends correlations regression analyse \
         download-zackenberg download-disko
