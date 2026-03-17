@@ -1,5 +1,5 @@
 """
-Trend Analysis of Climate Drivers — Zackenberg
+Trend Analysis of Climate Drivers
 ===============================================
 Tests for trends in the key drivers of snow-free days:
   1. PDD (Positive Degree Days) — calendar year
@@ -10,9 +10,10 @@ Uses Mann-Kendall test and Sen's slope estimator.
 Produces a combined figure for direct visual comparison.
 
 Usage:
-    python analyse_driver_trends.py
+    python analyse_driver_trends.py --site zackenberg
 """
-
+import argparse
+import yaml
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
@@ -21,17 +22,29 @@ from pathlib import Path
 
 # --- Config ---
 workingdir = Path("/home/shl/mdrev/projects/modis/snow_cover")
-csv_dir = workingdir / "results" / "csvs"
-fig_dir = workingdir / "figures" / "zackenberg"
-fig_dir.mkdir(parents=True, exist_ok=True)
 
 threshold = 40
 alpha = 0.05
 
+# --- Args ---
+parser = argparse.ArgumentParser()
+parser.add_argument("--site", required=True, help="Site name matching a config/<site>.yml")
+args = parser.parse_args()
+
+with open(f"config/{args.site}.yml") as f:
+    cfg = yaml.safe_load(f)
+
+site              = cfg["site"]
+csv_dir           = Path(f"{workingdir}/results/csvs/{site}/")
+fig_dir           = Path(f"{workingdir}/figures/{site}/")  
+fig_dir.mkdir(parents=True, exist_ok=True)
+
+
+
 # --- Load data ---
 print("Loading data...")
-sfd = pd.read_csv(csv_dir / "snow_free_days.csv")
-climate = pd.read_csv(csv_dir / "climate_predictors_zackenberg.csv")
+sfd = pd.read_csv(f"{csv_dir}/snow_free_days.csv")
+climate = pd.read_csv(f"{csv_dir}/climate_predictors_{site}.csv")
 
 df = pd.merge(sfd[["year", f"sfd_lt{threshold}"]], climate, on="year", how="inner")
 df = df.dropna()
@@ -110,7 +123,7 @@ for ax, (name, var) in zip(axes, variables.items()):
     ax.grid(True, alpha=0.3)
 
 axes[-1].set_xlabel("Year")
-axes[0].set_title("Zackenberg: Trends in Snow-Free Days and Climate Drivers")
+axes[0].set_title(f"{site.capitalize()}: Trends in Snow-Free Days and Climate Drivers")
 fig.tight_layout()
 fig.savefig(fig_dir / "driver_trends_combined.png", dpi=150)
 print(f"\nSaved: driver_trends_combined.png")
@@ -162,7 +175,7 @@ with open(tex_path, "w") as f:
     f.write("\\begin{table}[ht]\n")
     f.write("\\centering\n")
     f.write("\\caption{Mann-Kendall trend analysis of snow-free days and "
-            "climate drivers, Zackenberg.}\n")
+            f"climate drivers, {site.capitalize()}.\n")
     f.write("\\label{tab:driver_trends}\n")
     f.write("\\begin{tabular}{lrrr}\n")
     f.write("\\hline\n")

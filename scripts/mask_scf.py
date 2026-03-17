@@ -2,14 +2,13 @@
 Mask MODIS SCF NetCDFs with land and ice shapefiles
 ====================================================
 Reads each annual NetCDF, rasterises the land and ice masks
-onto the SCF grid, applies them, and writes new NetCDFs with
-both the original and masked variables.
+onto the SCF grid, and writes two sets of masked NetCDFs:
 
-Logic:
-    - Keep pixels inside land polygons
-    - Remove pixels inside ice polygons
-    - Result: snow_cover_fraction_masked = SCF for ice-free land only
-              cloud_persistence_masked   = cloud persistence for ice-free land only
+  {site}_masked/          — ice-free land only (ocean + glaciers masked)
+  {site}_masked_withice/  — all land including glaciers (ocean only masked)
+
+Both retain the variable name snow_cover_fraction_masked so downstream
+scripts work unchanged against either directory.
 
 Usage:
     python scripts/mask_scf.py --site zackenberg
@@ -32,10 +31,12 @@ args = parser.parse_args()
 with open(f"config/{args.site}.yml") as f:
     cfg = yaml.safe_load(f)
 
-site       = cfg["site"]
-nc_dir     = Path(f"netcdf/{site}/")
-out_nc_dir = Path(f"netcdf/{site}_masked/")
+site              = cfg["site"]
+nc_dir            = Path(f"netcdf/{site}/")
+out_nc_dir        = Path(f"netcdf/{site}_masked/")
+out_nc_dir_withice = Path(f"netcdf/{site}_masked_withice/")
 out_nc_dir.mkdir(parents=True, exist_ok=True)
+out_nc_dir_withice.mkdir(parents=True, exist_ok=True)
 
 land_shp = Path(cfg["land_shp"])
 ice_shp  = Path(cfg["ice_shp"])
@@ -93,42 +94,56 @@ print("Rasterising ice mask...")
 ice_mask = make_mask(ice, x_coords, y_coords)
 print(f"  Ice pixels: {ice_mask.sum()} / {land_mask.sum()} land pixels")
 
-# Combined mask: True = valid (land AND not ice)
+# Mask 1: ice-free land only (ocean + glaciers masked)
 valid_mask = land_mask & ~ice_mask
-print(f"  Valid (ice-free land) pixels: {valid_mask.sum()}\n")
+# Mask 2: all land including glaciers (ocean only masked)
+valid_mask_withice = land_mask
+print(f"  Valid (ice-free land) pixels:    {valid_mask.sum()}")
+print(f"  Valid (land + glacier) pixels:   {valid_mask_withice.sum()}\n")
 
-# --- Apply mask to each file ---
+# --- Apply masks to each file ---
+def apply_mask(ds, mask, scf_long_name, mask_info):
+    """Return a new dataset with snow_cover_fraction_masked and cloud_persistence_masked."""
+    ds_out = ds.copy()
+    ds_out["snow_cover_fraction_masked"] = ds[variable].where(mask)
+    ds_out["snow_cover_fraction_masked"].attrs = ds[variable].attrs.copy()
+    ds_out["snow_cover_fraction_masked"].attrs["long_name"] = scf_long_name
+    ds_out["snow_cover_fraction_masked"].attrs["mask_info"] = mask_info
+
+    ds_out["cloud_persistence_masked"] = ds["cloud_persistence"].where(mask)
+    ds_out["cloud_persistence_masked"].attrs = ds["cloud_persistence"].attrs.copy()
+    ds_out["cloud_persistence_masked"].attrs["long_name"] = (
+        "Cloud Persistence " + scf_long_name.split("(")[1].rstrip(")")
+    )
+    ds_out["cloud_persistence_masked"].attrs["mask_info"] = mask_info
+    return ds_out
+
 for nc_path in nc_files:
     print(f"Processing {nc_path.name}...")
     ds = xr.open_dataset(nc_path)
 
-    # Apply mask: set pixels outside valid area to NaN
-    masked = ds[variable].where(valid_mask)
-
-    # Add as new variable
-    ds["snow_cover_fraction_masked"] = masked
-    ds["snow_cover_fraction_masked"].attrs = ds[variable].attrs.copy()
-    ds["snow_cover_fraction_masked"].attrs["long_name"] = (
-        "NDSI Snow Cover (ice-free land only)"
+    # Version 1: ice-free land only
+    ds_masked = apply_mask(
+        ds, valid_mask,
+        scf_long_name="NDSI Snow Cover (ice-free land only)",
+        mask_info="Ocean and glaciers masked using land.shp and ice.shp",
     )
-    ds["snow_cover_fraction_masked"].attrs["mask_info"] = (
-        "Masked to ice-free land using land.shp and is.shp"
-    )
-
-    masked_cp = ds["cloud_persistence"].where(valid_mask)
-    ds["cloud_persistence_masked"] = masked_cp
-    ds["cloud_persistence_masked"].attrs = ds["cloud_persistence"].attrs.copy()
-    ds["cloud_persistence_masked"].attrs["long_name"] = (
-        "Cloud Persistence (ice-free land only)"
-    )
-    ds["cloud_persistence_masked"].attrs["mask_info"] = (
-        "Masked to ice-free land using land.shp and is.shp"
-    )
-
     out_path = out_nc_dir / nc_path.name
-    ds.to_netcdf(out_path)
-    ds.close()
+    ds_masked.to_netcdf(out_path)
     print(f"  -> {out_path}")
 
+    # Version 2: land including glaciers
+    ds_withice = apply_mask(
+        ds, valid_mask_withice,
+        scf_long_name="NDSI Snow Cover (land including glaciers)",
+        mask_info="Ocean masked using land.shp; glaciers retained",
+    )
+    out_path_wi = out_nc_dir_withice / nc_path.name
+    ds_withice.to_netcdf(out_path_wi)
+    print(f"  -> {out_path_wi}")
+
+    ds.close()
+
 print("\nDone. Original files untouched in:", nc_dir)
-print("Masked files written to:", out_nc_dir)
+print("Ice-free land files written to:   ", out_nc_dir)
+print("Land + glacier files written to:  ", out_nc_dir_withice)

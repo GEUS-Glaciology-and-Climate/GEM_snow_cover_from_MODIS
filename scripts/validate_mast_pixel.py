@@ -36,24 +36,34 @@ with open(f"config/{args.site}.yml") as f:
 
 site = cfg["site"]
 gem_dir = Path(cfg["gem_dir"])
+temp_file = cfg["insitu_temperature"]
+snowdepth_file = cfg["insitu_snowdepth"]
+swin_file = cfg["insitu_swin"]
+swout_file = cfg["insitu_swout"]
 
+# Column name overrides — gets the insitu column in  the config file if it exists, otherwise it falls back to the standard name 
+col_temperature       = cfg.get("insitu_col_temperature",           "AT (°C)")
+col_snowdepth         = cfg.get("insitu_col_snowdepth",             "SD (m)")
+time_col_snowdepth    = cfg.get("insitu_time_col_snowdepth",        "Time")
+col_swi               = cfg.get("insitu_col_sri",                   "SRI (W/m2)")
+col_swo               = cfg.get("insitu_col_sro",                   "SRO (W/m2)")
 # ============================================================
 # Helper
 # ============================================================
 
-def load_gem_file(path, value_col):
+def load_gem_file(path, value_col, time_col="Time"):
     """Load a GEM tab-separated data file into a datetime-indexed Series."""
     df = pd.read_csv(path, sep="\t", na_values=-9999, encoding="utf-8-sig")
-    df["datetime"] = pd.to_datetime(df["Date"] + " " + df["Time"])
-    df = df.set_index("datetime").drop(columns=["Date", "Time", "Quality Flag"])
+    df["datetime"] = pd.to_datetime(df["Date"] + " " + df[time_col])
+    df = df.set_index("datetime")
     return df[value_col].rename(value_col)
 
 # ============================================================
 # 1. Air temperature (hourly → daily mean)
 # ============================================================
 print("Loading air temperature...")
-at_path = next(gem_dir.glob("Air_temperature_200cm_60_30min*_data.txt"))
-at = load_gem_file(at_path, "AT (°C)")
+at_path = next(gem_dir.glob(temp_file))
+at = load_gem_file(at_path, col_temperature)
 at_daily = at.resample("1D").mean()
 print(f"  {at_path.name}")
 print(f"  Range: {at_daily.first_valid_index().date()} to {at_daily.last_valid_index().date()}")
@@ -63,8 +73,8 @@ print(f"  Valid days: {at_daily.notna().sum()}")
 # 2. Snow depth (3-hourly → daily mean)
 # ============================================================
 print("\nLoading snow depth...")
-sd_path = next(gem_dir.glob("Snow depth - 180min*_data.txt"))
-sd = load_gem_file(sd_path, "SD (m)")
+sd_path = next(gem_dir.glob(snowdepth_file))
+sd = load_gem_file(sd_path, col_snowdepth, time_col=time_col_snowdepth)
 sd_daily = sd.resample("1D").mean()
 print(f"  {sd_path.name}")
 print(f"  Range: {sd_daily.first_valid_index().date()} to {sd_daily.last_valid_index().date()}")
@@ -74,13 +84,13 @@ print(f"  Valid days: {sd_daily.notna().sum()}")
 # 3. Shortwave radiation (5-min → daily sums for albedo)
 # ============================================================
 print("\nLoading shortwave incoming radiation...")
-sri_path = next(gem_dir.glob("Short wave incoming*_data.txt"))
-sri = load_gem_file(sri_path, "SRI (W/m2)")
+sri_path = next(gem_dir.glob(swin_file))
+sri = load_gem_file(sri_path, col_swi)
 print(f"  {sri_path.name}")
 
 print("Loading shortwave outgoing radiation...")
-sro_path = next(gem_dir.glob("Short wave outgoing*_data.txt"))
-sro = load_gem_file(sro_path, "SRO (W/m2)")
+sro_path = next(gem_dir.glob(swout_file))
+sro = load_gem_file(sro_path, col_swo)
 print(f"  {sro_path.name}")
 
 # Daily albedo from daily sums — more robust than mean of instantaneous values.
@@ -333,67 +343,72 @@ for thresh in modis_thresholds:
 cmap   = plt.cm.viridis
 colors = cmap(np.linspace(0.1, 0.9, len(modis_thresholds)))
 
-fig2, axes2 = plt.subplots(1, 3, figsize=(18, 5))
+# Two-row layout: full-width time series on top, two scatter panels below.
+# Width = 174 mm (double-column journal standard), height scaled to fit.
+fig2 = plt.figure(figsize=(6.85, 8.0))
+gs   = fig2.add_gridspec(2, 2, hspace=0.42, wspace=0.38,
+                          top=0.95, bottom=0.07, left=0.09, right=0.97)
+ax_ts = fig2.add_subplot(gs[0, :])   # top: full width
+ax_s1 = fig2.add_subplot(gs[1, 0])  # bottom left
+ax_s2 = fig2.add_subplot(gs[1, 1])  # bottom right
 
-# Panel 1: time series — in situ + mast pixel all thresholds
-ax = axes2[0]
-ax.plot(sfd_insitu.index, sfd_insitu["sfd_insitu"], "o-", color="steelblue",
-        linewidth=2, markersize=5, label=f"In situ (albedo < {albedo_threshold})", zorder=5)
+# Panel (a): time series — in situ + mast pixel all thresholds
+ax_ts.plot(sfd_insitu.index, sfd_insitu["sfd_insitu"], "o-", color="steelblue",
+           linewidth=2, markersize=5, label=f"In situ (albedo < {albedo_threshold})", zorder=5)
 for thresh, color in zip(modis_thresholds, colors):
     col = f"snow_lt{thresh}"
     valid = sfd_modis[col].dropna()
-    ax.plot(valid.index, valid.values, "--", color=color,
-            linewidth=1, markersize=3, marker="s", label=f"Mast pixel NDSI < {thresh}%")
-ax.set_xlabel("Year")
-ax.set_ylabel("Snow-free days per year")
-ax.set_title(f"{site.capitalize()}: In situ vs MODIS mast pixel")
-ax.legend(fontsize=7, ncol=2)
-ax.grid(True, alpha=0.3)
+    ax_ts.plot(valid.index, valid.values, "--", color=color,
+               linewidth=1, markersize=3, marker="s", label=f"NDSI < {thresh}%")
+ax_ts.set_xlabel("Year", fontsize=9)
+ax_ts.set_ylabel("Snow-free days per year", fontsize=9)
+ax_ts.legend(fontsize=7, ncol=4, loc="upper left")
+ax_ts.grid(True, alpha=0.3)
+ax_ts.tick_params(labelsize=8)
+ax_ts.text(-0.07, 1.02, "(a)", transform=ax_ts.transAxes, fontsize=10, fontweight="bold")
 
-def scatter_panel(ax, x_vals, y_vals, years, xlabel, ylabel, title):
+def scatter_panel(ax, x_vals, y_vals, years, xlabel, ylabel, label):
     lims = [0, max(x_vals.max(), y_vals.max()) + 10]
-    ax.scatter(x_vals, y_vals, color="steelblue", s=40, zorder=3)
+    ax.scatter(x_vals, y_vals, color="steelblue", s=30, zorder=3)
     ax.plot(lims, lims, "--", color="gray", linewidth=1, label="1:1 line")
     for year, xv, yv in zip(years, x_vals, y_vals):
         ax.annotate(str(year), (xv, yv),
-                    fontsize=7, textcoords="offset points", xytext=(4, 2))
+                    fontsize=6, textcoords="offset points", xytext=(3, 2))
     r    = np.corrcoef(x_vals, y_vals)[0, 1]
     bias = (y_vals - x_vals).mean()
     ax.text(0.05, 0.95, f"r = {r:.3f}\nBias = {bias:+.1f} d",
-            transform=ax.transAxes, va="top", fontsize=10,
+            transform=ax.transAxes, va="top", fontsize=8,
             bbox=dict(boxstyle="round", facecolor="wheat", alpha=0.5))
-    ax.set_xlabel(xlabel)
-    ax.set_ylabel(ylabel)
-    ax.set_title(title)
+    ax.set_xlabel(xlabel, fontsize=9)
+    ax.set_ylabel(ylabel, fontsize=9)
     ax.set_xlim(lims); ax.set_ylim(lims); ax.set_aspect("equal")
     ax.legend(fontsize=8); ax.grid(True, alpha=0.3)
+    ax.tick_params(labelsize=8)
+    ax.text(-0.16, 1.02, label, transform=ax.transAxes, fontsize=10, fontweight="bold")
 
-# Panel 2: scatter — in situ vs mast pixel, primary threshold only
-ax2 = axes2[1]
+# Panel (b): scatter — in situ vs mast pixel, primary threshold only
 col = f"snow_lt{primary}"
 merged2 = sfd_insitu.join(sfd_modis[[col]], how="inner").dropna()
-scatter_panel(ax2,
+scatter_panel(ax_s1,
               x_vals=merged2["sfd_insitu"].values,
               y_vals=merged2[col].values,
               years=merged2.index,
               xlabel=f"In situ (albedo < {albedo_threshold})",
               ylabel=f"MODIS mast pixel (NDSI < {primary}%)",
-              title=f"{site.capitalize()}: In situ vs mast pixel")
+              label="(b)")
 
-# Panel 3: scatter — mast pixel vs area mean, primary threshold only
-ax3 = axes2[2]
+# Panel (c): scatter — mast pixel vs area mean, primary threshold only
 area_col = f"sfd_lt{primary}"
 merged3 = sfd_modis[[col]].join(sfd_area[[area_col]], how="inner").dropna()
-scatter_panel(ax3,
+scatter_panel(ax_s2,
               x_vals=merged3[col].values,
               y_vals=merged3[area_col].values,
               years=merged3.index,
               xlabel=f"MODIS mast pixel (NDSI < {primary}%)",
               ylabel=f"MODIS area mean (NDSI < {primary}%)",
-              title=f"{site.capitalize()}: Mast pixel vs area mean")
+              label="(c)")
 
-fig2.tight_layout()
-fig2.savefig(out_dir / "sfd_insitu_vs_modis.png", dpi=150)
+fig2.savefig(out_dir / "sfd_insitu_vs_modis.png", dpi=300)
 print(f"\n  Saved: figures/{site}/sfd_insitu_vs_modis.png")
 
 # ============================================================

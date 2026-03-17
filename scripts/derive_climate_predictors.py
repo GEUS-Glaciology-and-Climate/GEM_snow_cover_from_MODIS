@@ -1,5 +1,5 @@
 """
-Derive Climate Predictors for Snow-Free Day Analysis — Zackenberg
+Derive Climate Predictors for Snow-Free Day Analysis 
 =================================================================
 Computes from CARRA reanalysis:
   1. PDD (Positive Degree Days) — calendar year sum of positive daily means
@@ -15,9 +15,11 @@ Outputs:
   - PDD comparison plot
 
 Usage:
-    python derive_climate_predictors.py
+    python derive_climate_predictors.py --site zackenberg
 """
 
+import argparse
+import yaml
 import xarray as xr
 import pandas as pd
 import numpy as np
@@ -25,18 +27,32 @@ import matplotlib.pyplot as plt
 from pathlib import Path
 
 # --- Config ---
-station = "zackenberg"
+
 carra_tp_path = "./data/CARRA/CARRA_tp_nearest_PROMICE.nc"
 carra_t2m_path = "./data/CARRA/CARRA_t2m_nearest_PROMICE.nc"
-insitu_path = ("/home/shl/mdrev/data/GEM/zackenberg/"
-               "Air_temperature_200cm_60_30min_sample_10.17897_G5WS-0W04_data.txt")
-
-out_dir = Path("./results/csvs/")
-fig_dir = Path("./figures/zackenberg/")
-out_dir.mkdir(parents=True, exist_ok=True)
-fig_dir.mkdir(parents=True, exist_ok=True)
 
 melt_threshold = -3.0  # °C, daily mean threshold for "melt day"
+
+# --- Args ---
+parser = argparse.ArgumentParser()
+parser.add_argument("--site", required=True, help="Site name matching a config/<site>.yml")
+args = parser.parse_args()
+
+with open(f"config/{args.site}.yml") as f:
+    cfg = yaml.safe_load(f)
+
+station           = cfg["station_id"]
+gem_dir           = cfg["gem_dir"]
+air_temp          = cfg["insitu_temperature"]
+insitu_path       = Path(f"{gem_dir}/{air_temp}")
+site              = cfg["site"]
+csv_dir           = Path(f"./results/csvs/{site}/")
+fig_dir           = Path(f"./figures/{site}/")  
+csv_dir.mkdir(parents=True, exist_ok=True)
+fig_dir.mkdir(parents=True, exist_ok=True)
+
+# Column name overrides — gets the insitu column in  the config file if it exists, otherwise it falls back to the standard name 
+col_temperature       = cfg.get("insitu_col_temperature",           "AT (°C)")
 
 # ============================================================
 # 1. Load CARRA temperature
@@ -114,7 +130,7 @@ print("Loading in situ temperature...")
 insitu = pd.read_csv(insitu_path, sep="\t", na_values=-9999)
 insitu["date"] = pd.to_datetime(insitu["Date"] + " " + insitu["Time"])
 insitu.set_index("date", inplace=True)
-insitu.rename(columns={"AT (°C)": "air_temperature_2m"}, inplace=True)
+insitu.rename(columns={col_temperature: "air_temperature_2m"}, inplace=True)
 
 # Resample to daily mean
 insitu_daily = insitu["air_temperature_2m"].resample("1D").mean()
@@ -143,7 +159,7 @@ print("\nCombining predictors...")
 predictors = pdd_carra.join(winter_precip, how="outer").join(melt_days, how="outer")
 
 # Save all predictors
-pred_path = out_dir / "climate_predictors_zackenberg.csv"
+pred_path = f"{csv_dir}/climate_predictors_{site}.csv"
 predictors.to_csv(pred_path)
 print(f"Saved: {pred_path}")
 print(predictors.dropna().to_string())
@@ -154,7 +170,7 @@ print(predictors.dropna().to_string())
 print("\nPDD comparison...")
 pdd_comp = pdd_carra.join(pdd_insitu, how="inner")
 
-comp_path = out_dir / "pdd_comparison_zackenberg.csv"
+comp_path = f"{csv_dir}/pdd_comparison_{site}.csv"
 pdd_comp.to_csv(comp_path)
 print(f"Saved: {comp_path}")
 
@@ -181,7 +197,7 @@ ax.plot(fit_x, np.polyval(coeffs, fit_x), "-", color="firebrick", linewidth=1.5,
 
 ax.set_xlabel("In situ PDD (°C·days)")
 ax.set_ylabel("CARRA PDD (°C·days)")
-ax.set_title("Zackenberg: PDD Comparison — CARRA vs In Situ")
+ax.set_title(f"{site}: PDD Comparison — CARRA vs In Situ")
 ax.legend(loc="upper left")
 ax.text(0.95, 0.05,
         f"R² = {r2:.3f}\nRMSE = {rmse:.1f} °C·d\nBias = {bias:.1f} °C·d",
@@ -203,7 +219,7 @@ ax2.plot(pdd_comp.index, pdd_comp["pdd_insitu"], "o-", color="steelblue",
          markersize=4, linewidth=1.5, label="In situ")
 ax2.set_xlabel("Year")
 ax2.set_ylabel("PDD (°C·days)")
-ax2.set_title("Zackenberg: Annual PDD — CARRA vs In Situ")
+ax2.set_title(f"{site}: Annual PDD — CARRA vs In Situ")
 ax2.legend()
 ax2.grid(True, alpha=0.3)
 fig2.tight_layout()

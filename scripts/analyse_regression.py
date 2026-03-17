@@ -1,5 +1,5 @@
 """
-Regression Analysis: Snow-Free Days vs Climate Predictors — Zackenberg
+Regression Analysis: Snow-Free Days vs Climate Predictors 
 ======================================================================
 Two-predictor OLS regression:
     snow_free_days ~ PDD + winter_precip
@@ -12,11 +12,11 @@ Produces:
   - LaTeX table of regression results
 
 Usage:
-    python analyse_regression.py
-
-Requires: statsmodels (conda install -c conda-forge statsmodels)
+    python analyse_regression.py --site zackenberg
 """
 
+import argparse
+import yaml
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
@@ -26,17 +26,27 @@ from pathlib import Path
 
 # --- Config ---
 workingdir = Path("/home/shl/mdrev/projects/modis/snow_cover")
-csv_dir = workingdir / "results" / "csvs"
-fig_dir = workingdir / "figures" / "zackenberg"
-fig_dir.mkdir(parents=True, exist_ok=True)
 
 threshold = 40
 alpha = 0.05
 
+# --- Args ---
+parser = argparse.ArgumentParser()
+parser.add_argument("--site", required=True, help="Site name matching a config/<site>.yml")
+args = parser.parse_args()
+
+with open(f"config/{args.site}.yml") as f:
+    cfg = yaml.safe_load(f)
+
+site              = cfg["site"]
+csv_dir           = Path(f"{workingdir}/results/csvs/{site}/")
+fig_dir           = Path(f"{workingdir}/figures/{site}/")  
+fig_dir.mkdir(parents=True, exist_ok=True)
+
 # --- Load and merge data ---
 print("Loading data...")
 sfd = pd.read_csv(csv_dir / "snow_free_days.csv")
-climate = pd.read_csv(csv_dir / "climate_predictors_zackenberg.csv")
+climate = pd.read_csv(f"{csv_dir}/climate_predictors_{site}.csv")
 
 df = pd.merge(sfd[["year", f"sfd_lt{threshold}"]], climate, on="year", how="inner")
 df = df.dropna()
@@ -90,7 +100,7 @@ ax.text(0.05, 0.95,
 
 ax.set_xlabel("Predicted snow-free days")
 ax.set_ylabel("Observed snow-free days")
-ax.set_title(f"Zackenberg: Observed vs Predicted Snow-Free Days\n"
+ax.set_title(f"{site.capitalize()}: Observed vs Predicted Snow-Free Days\n"
              f"(PDD + Winter Precip, threshold < {threshold}%)")
 ax.set_xlim(lims)
 ax.set_ylim(lims)
@@ -117,7 +127,7 @@ ax2.fill_between(df["year"], y, predicted, alpha=0.15, color="gray",
 
 ax2.set_xlabel("Year")
 ax2.set_ylabel(f"Snow-free days (NDSI < {threshold}%)")
-ax2.set_title(f"Zackenberg: Observed vs Predicted Snow-Free Days")
+ax2.set_title(f"{site.capitalize()}: Observed vs Predicted Snow-Free Days")
 ax2.legend(loc="best")
 ax2.grid(True, alpha=0.3)
 fig2.tight_layout()
@@ -205,7 +215,7 @@ with open(tex_path, "w") as f:
     f.write("\\begin{table}[ht]\n")
     f.write("\\centering\n")
     f.write("\\caption{OLS regression of snow-free days on PDD and winter "
-            f"precipitation, Zackenberg (NDSI threshold $<$ {threshold}\\%). "
+            f"precipitation, {site.capitalize()} (NDSI threshold $<$ {threshold}\\%). "
             f"n = {len(df)} years.}}\n")
     f.write("\\label{tab:regression}\n")
     f.write("\\begin{tabular}{lrrrr}\n")
@@ -233,7 +243,7 @@ print(f"\nSaved LaTeX table: {tex_path}")
 df_out = df[["year", "snow_free_days"]].copy()
 df_out["predicted"] = predicted.values
 df_out["residual"] = residuals.values
-df_out.to_csv(csv_dir / "regression_results_zackenberg.csv", index=False)
-print(f"Saved: regression_results_zackenberg.csv")
+df_out.to_csv(f"{csv_dir}/regression_results_{site}.csv", index=False)
+print(f"Saved: regression_results_{site}.csv")
 
 print("\nDone.")

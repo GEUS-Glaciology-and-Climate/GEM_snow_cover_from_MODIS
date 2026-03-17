@@ -1,5 +1,5 @@
 """
-Correlation Analysis: Snow-Free Days vs Climate Predictors — Zackenberg
+Correlation Analysis: Snow-Free Days vs Climate Predictors 
 =======================================================================
 Loads snow-free days and climate predictors from CSVs and computes:
   1. Pairwise Pearson correlation matrix with significance
@@ -7,11 +7,10 @@ Loads snow-free days and climate predictors from CSVs and computes:
   3. Visualisations: correlation heatmap and partial correlation bar chart
 
 Usage:
-    python analyse_correlations.py
-
-Requires: pingouin (conda install -c conda-forge pingouin)
+    python analyse_correlations.py --site zackenberg
 """
-
+import argparse
+import yaml
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
@@ -21,17 +20,32 @@ from pathlib import Path
 
 # --- Config ---
 workingdir = Path("/home/shl/mdrev/projects/modis/snow_cover")
-csv_dir = workingdir / "results" / "csvs"
-fig_dir = workingdir / "figures" / "zackenberg"
-fig_dir.mkdir(parents=True, exist_ok=True)
+#csv_dir = workingdir / "results" / "csvs"
+#fig_dir = workingdir / "figures" / "zackenberg"
+#fig_dir.mkdir(parents=True, exist_ok=True)
 
 threshold = 40  # NDSI threshold for snow-free days
 alpha = 0.05
 
+# --- Args ---
+parser = argparse.ArgumentParser()
+parser.add_argument("--site", required=True, help="Site name matching a config/<site>.yml")
+args = parser.parse_args()
+
+with open(f"config/{args.site}.yml") as f:
+    cfg = yaml.safe_load(f)
+
+site              = cfg["site"]
+csv_dir           = Path(f"{workingdir}/results/csvs/{site}/")
+fig_dir           = Path(f"{workingdir}/figures/{site}/")  
+fig_dir.mkdir(parents=True, exist_ok=True)
+
+
+
 # --- Load data ---
 print("Loading data...")
-sfd = pd.read_csv(csv_dir / "snow_free_days.csv")
-climate = pd.read_csv(csv_dir / "climate_predictors_zackenberg.csv")
+sfd = pd.read_csv(f"{csv_dir}/snow_free_days.csv")
+climate = pd.read_csv(f"{csv_dir}/climate_predictors_{site}.csv")
 
 # Merge on year
 df = pd.merge(sfd[["year", f"sfd_lt{threshold}"]], climate, on="year", how="inner")
@@ -96,7 +110,7 @@ for i in range(n):
                 color=color, fontsize=10)
 
 plt.colorbar(im, ax=ax, label="Pearson r", shrink=0.8)
-ax.set_title("Zackenberg: Correlation Matrix\n"
+ax.set_title(f"{site.capitalize()}: Correlation Matrix\n"
              f"(Snow-free days threshold < {threshold}%)")
 fig.tight_layout()
 fig.savefig(fig_dir / "correlation_matrix.png", dpi=150)
@@ -139,7 +153,7 @@ bars = ax2.bar(partial_df["predictor"], partial_df["partial_r"],
 
 ax2.axhline(0, color="black", linewidth=0.5)
 ax2.set_ylabel("Partial correlation (r)")
-ax2.set_title(f"Zackenberg: Partial Correlations with Snow-Free Days\n"
+ax2.set_title(f"{site.capitalize()}: Partial Correlations with Snow-Free Days\n"
               f"(threshold < {threshold}%, controlling for other predictors)")
 ax2.grid(True, alpha=0.3, axis="y")
 
@@ -188,10 +202,10 @@ print("  VIF > 10 suggests severe multicollinearity")
 # 4. Export results
 # ============================================================
 # Correlation matrix
-corr_df.to_csv(csv_dir / "correlation_matrix_zackenberg.csv")
+corr_df.to_csv( f"{csv_dir}/correlation_matrix_{site}.csv")
 
 # Partial correlations
-partial_df.to_csv(csv_dir / "partial_correlations_zackenberg.csv", index=False)
+partial_df.to_csv(f"{csv_dir}/partial_correlations_{site}.csv", index=False)
 
 # LaTeX table: partial correlations
 tex_path = fig_dir / "partial_correlations.tex"
@@ -199,7 +213,7 @@ with open(tex_path, "w") as f:
     f.write("\\begin{table}[ht]\n")
     f.write("\\centering\n")
     f.write("\\caption{Partial correlations between snow-free days and climate "
-            f"predictors, Zackenberg (NDSI threshold $<$ {threshold}\\%). "
+            f"predictors, {site.capitalize()} (NDSI threshold $<$ {threshold}\\%). "
             "Each predictor is correlated with snow-free days while controlling "
             "for the remaining predictors.}\n")
     f.write("\\label{tab:partial_corr}\n")

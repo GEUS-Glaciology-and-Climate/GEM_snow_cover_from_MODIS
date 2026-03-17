@@ -1,0 +1,24 @@
+site: nuuk
+aoi: shp/nuuk_aoi.shp
+target_epsg: 32622
+
+# Raw HDF download destination
+hdf_dir: /mnt/glaciologi/GEM/remote_sensing_and_modelling/data/MODIS_CGF_SCF/nuuk/
+
+# MODIS product and time range
+modis_product: MOD10A1F
+temporal_start: "2000-02-24"
+temporal_end: "2025-12-31"
+
+# Masking shapefiles
+land_shp: /home/shl/mdrev/data/sdfi/G250_VEKTOR/Land.shp
+ice_shp: /home/shl/mdrev/data/sdfi/G250_VEKTOR/Is.shp
+
+# In situ validation
+station_id: nuuk
+aws_stations: data/mast_locations.csv
+gem_dir: /home/shl/mdrev/data/GEM/nuuk/
+insitu_temperature: "Air_temperature_200_cm_30min_average_10.17897_PGN3-7597_data.txt"
+insitu_snowdepth: "Snow depth (m)_10.17897_19YH-DB49_data.txt"
+insitu_swin: "Short wave incoming radiation  200 cm - 5min average (W_m2)_10.17897_AA4G-XC20_data.txt"
+insitu_swout: "Short wave outgoing radiation  200 cm - 5min average (W_m2)_10.17897_AFVE-HV81_data.txt"

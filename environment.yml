@@ -22,3 +22,5 @@ dependencies:
   - statsmodels
   - pyyaml
   - s3fs
+  - scikit-learn
+  - pvlib

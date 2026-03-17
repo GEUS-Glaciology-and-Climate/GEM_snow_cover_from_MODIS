@@ -85,11 +85,20 @@ for year, year_iter in groupby(hdf_files, key=lambda f: parse_date(f).year):
     print(f"\n{year}: {len(date_groups)} dates, up to {n_tiles_max} tile(s) per date")
 
     arrays_scf, arrays_cloud, times = [], [], []
+    ref_grid = None   # reference grid for reproject_match within the year
 
     for date, tiles in sorted(date_groups.items()):
         try:
             arr_scf   = mosaic_and_clip(tiles, variable_scf,   aoi, target_epsg)
             arr_cloud = mosaic_and_clip(tiles, variable_cloud, aoi, target_epsg)
+
+            # Snap all days to the first day's grid to guarantee consistent shape
+            if ref_grid is None:
+                ref_grid = arr_scf
+            else:
+                arr_scf   = arr_scf.rio.reproject_match(ref_grid)
+                arr_cloud = arr_cloud.rio.reproject_match(ref_grid)
+
             arrays_scf.append(arr_scf)
             arrays_cloud.append(arr_cloud)
             times.append(date)
@@ -101,8 +110,8 @@ for year, year_iter in groupby(hdf_files, key=lambda f: parse_date(f).year):
         print(f"  No valid data for {year}, skipping")
         continue
 
-    da_scf   = xr.concat(arrays_scf,   dim="time", join="override").assign_coords(time=times).sortby("time")
-    da_cloud = xr.concat(arrays_cloud, dim="time", join="override").assign_coords(time=times).sortby("time")
+    da_scf   = xr.concat(arrays_scf,   dim="time").assign_coords(time=times).sortby("time")
+    da_cloud = xr.concat(arrays_cloud, dim="time").assign_coords(time=times).sortby("time")
 
     ds_out = da_scf.to_dataset(name="snow_cover_fraction")
     ds_out["cloud_persistence"] = da_cloud

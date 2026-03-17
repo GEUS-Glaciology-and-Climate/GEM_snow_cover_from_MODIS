@@ -84,6 +84,10 @@ elev = dem_proj.values.astype(np.float32)
 print(f"  Grid size    : {elev.shape}")
 print(f"  Elevation    : {np.nanmin(elev):.1f} – {np.nanmax(elev):.1f} m (ellipsoidal)")
 
+# Save 32 m DEM at this stage (land + ocean, full bounding box) so that the
+# shadow-geometry script has surrounding terrain for horizon angle computation.
+dem_32m_path = out_dir / f"{site}_dem_32m.tif"
+
 # --- Geoid correction: ellipsoidal → orthometric (EGM2008) ---
 print("Applying EGM2008 geoid correction...")
 xx, yy = np.meshgrid(dem_proj.x.values, dem_proj.y.values)
@@ -105,6 +109,11 @@ N = -z_out.reshape(elev.shape).astype(np.float32)
 elev = np.where(np.isfinite(elev), elev - N, np.nan)
 print(f"  Geoid undulation: {np.nanmean(N):.2f} m (mean over AOI)")
 print(f"  Elevation    : {np.nanmin(elev):.1f} – {np.nanmax(elev):.1f} m (orthometric, EGM2008)")
+
+# Write 32 m DEM (geoid-corrected, before ocean masking) as GeoTIFF
+dem_proj_corrected = dem_proj.copy(data=elev)
+dem_proj_corrected.rio.to_raster(dem_32m_path, dtype="float32")
+print(f"  Saved 32 m DEM: {dem_32m_path}")
 
 # --- Slope and aspect ---
 print("Computing slope and aspect...")

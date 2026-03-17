@@ -10,11 +10,10 @@ Uses Mann-Kendall test and Sen's slope estimator.
 Only displays trend lines if statistically significant.
 
 Usage:
-    python analyse_trends.py
-
-Requires: pymannkendall (conda install -c conda-forge pymannkendall)
+    python analyse_trends.py --site zackenberg
 """
-
+import argparse
+import yaml
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
@@ -22,13 +21,22 @@ import pymannkendall as mk
 from pathlib import Path
 
 # --- Config ---
-csv_path = Path("./csvs/zackenberg/snow_free_days.csv")
-fig_dir = Path("./figures/zackenberg/")
-fig_dir.mkdir(parents=True, exist_ok=True)
-
 threshold = 40
 alpha = 0.05
 rolling_window = 5
+
+# --- Args ---
+parser = argparse.ArgumentParser()
+parser.add_argument("--site", required=True, help="Site name matching a config/<site>.yml")
+args = parser.parse_args()
+
+with open(f"config/{args.site}.yml") as f:
+    cfg = yaml.safe_load(f)
+
+site              = cfg["site"]
+csv_path           = Path(f"./results/csvs/{site}/snow_free_days.csv")
+fig_dir           = Path(f"./figures/{site}/")  
+fig_dir.mkdir(parents=True, exist_ok=True)
 
 # --- Load data ---
 df = pd.read_csv(csv_path)
@@ -37,6 +45,8 @@ mean_sfd = df[f"sfd_lt{threshold}"].values
 
 print(f"Loaded {len(years)} years from {csv_path}")
 print(f"Year range: {years[0]}–{years[-1]}")
+
+
 
 # ============================================================
 # 1. Trend in mean snow-free days
@@ -68,7 +78,7 @@ else:
 
 ax.set_xlabel("Year")
 ax.set_ylabel(f"Mean snow-free days (NDSI < {threshold}%)")
-ax.set_title(f"Zackenberg: Snow-Free Days per Year (threshold < {threshold}%)")
+ax.set_title(f"{site.capitalize()}: Snow-Free Days per Year (threshold < {threshold}%)")
 ax.legend(loc="best")
 ax.grid(True, alpha=0.3)
 ax.set_xlim(years[0] - 0.5, years[-1] + 0.5)
@@ -114,7 +124,7 @@ else:
 
 ax2.set_xlabel("Year")
 ax2.set_ylabel("Rolling std dev (days)")
-ax2.set_title(f"Zackenberg: Interannual Variability of Snow-Free Days "
+ax2.set_title(f"{site.capitalize()}: Interannual Variability of Snow-Free Days "
               f"({rolling_window}-year window, threshold < {threshold}%)")
 ax2.legend(loc="best")
 ax2.grid(True, alpha=0.3)
@@ -142,7 +152,7 @@ with open(tex_path, "w") as f:
     f.write("\\begin{table}[ht]\n")
     f.write("\\centering\n")
     f.write("\\caption{Mann-Kendall trend analysis of snow-free days, "
-            f"Zackenberg (NDSI threshold $<$ {threshold}\\%).}}\n")
+            f"{site.capitalize()} (NDSI threshold $<$ {threshold}\\%).}}\n")
     f.write("\\label{tab:trend_summary}\n")
     f.write("\\begin{tabular}{lrrr}\n")
     f.write("\\hline\n")

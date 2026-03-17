@@ -53,7 +53,7 @@ if not nc_files:
     raise FileNotFoundError(f"No NetCDF files found in {nc_dir}")
 
 print(f"Found {len(nc_files)} annual files")
-ds = xr.open_mfdataset(nc_files, combine="by_coords")
+ds = xr.open_mfdataset(nc_files, combine="nested", concat_dim="time", chunks={"time": 30})
 da = ds[variable]
 cp = ds["cloud_persistence_masked"].where(ds["cloud_persistence_masked"] < 255)  # 255 = fill value
 
@@ -83,9 +83,10 @@ for year in years:
         print(f"  {year}: skipped ({len(yearly.time)} days)")
         continue
     years_used.append(year)
+    valid_pixels = yearly.notnull().any(dim="time")
     for thresh in thresholds:
-        snow_free = (yearly < thresh).sum(dim="time")  # per-pixel count
-        mean_days = float(snow_free.mean())             # spatial average
+        snow_free = (yearly < thresh).sum(dim="time")             # per-pixel count
+        mean_days = float(snow_free.where(valid_pixels).mean())   # land pixels only
         results[thresh].append(mean_days)
 
     yearly_cp = cp.sel(time=cp.time.dt.year == year)
@@ -107,7 +108,7 @@ for thresh, color in zip(thresholds, colors):
 
 ax.set_xlabel("Year")
 ax.set_ylabel("Mean snow-free days per year")
-ax.set_title("{site.capitalize()}: Snow-Free Days by NDSI Threshold")
+ax.set_title(f"{site.capitalize()}: Snow-Free Days by NDSI Threshold")
 ax.legend(title="Threshold", bbox_to_anchor=(1.02, 1), loc="upper left")
 ax.grid(True, alpha=0.3)
 ax.set_xlim(years_used[0], years_used[-1])
@@ -273,7 +274,10 @@ mast_x = float(gdf.geometry.x.iloc[0])
 mast_y = float(gdf.geometry.y.iloc[0])
 print(f"  {station} mast position: x={mast_x:.1f}, y={mast_y:.1f} (EPSG:{target_epsg})")
 
-# Extract the single nearest pixel across the full time series
+# Extract the single nearest pixel across the full time series.
+# Use the unmasked snow_cover_fraction — the mast pixel may fall on a
+# glacier body that is removed from the masked variable.
+# da_unmasked = ds["snow_cover_fraction"].where(ds["snow_cover_fraction"] <= 100)
 pixel = da.sel(x=mast_x, y=mast_y, method="nearest")
 print(f"  Nearest MODIS pixel: x={float(pixel.x):.1f}, y={float(pixel.y):.1f}")
 
@@ -289,4 +293,3 @@ mast_df.to_csv(mast_csv_path, index=False)
 print(f"  Saved: {mast_csv_path}")
 
 mast_df.plot()
-plt.show()
