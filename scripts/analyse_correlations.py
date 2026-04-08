@@ -37,8 +37,10 @@ with open(f"config/{args.site}.yml") as f:
 
 site              = cfg["site"]
 csv_dir           = Path(f"{workingdir}/results/csvs/{site}/")
-fig_dir           = Path(f"{workingdir}/figures/{site}/")  
+fig_dir           = Path(f"{workingdir}/figures/{site}/")
 fig_dir.mkdir(parents=True, exist_ok=True)
+latex_dir         = Path(f"{workingdir}/results/latex/{site}/")
+latex_dir.mkdir(parents=True, exist_ok=True)
 
 
 
@@ -208,7 +210,7 @@ corr_df.to_csv( f"{csv_dir}/correlation_matrix_{site}.csv")
 partial_df.to_csv(f"{csv_dir}/partial_correlations_{site}.csv", index=False)
 
 # LaTeX table: partial correlations
-tex_path = fig_dir / "partial_correlations.tex"
+tex_path = latex_dir / f"partial_correlations_{site}.tex"
 with open(tex_path, "w") as f:
     f.write("\\begin{table}[ht]\n")
     f.write("\\centering\n")

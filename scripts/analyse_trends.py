@@ -35,13 +35,16 @@ with open(f"config/{args.site}.yml") as f:
 
 site              = cfg["site"]
 csv_path           = Path(f"./results/csvs/{site}/snow_free_days.csv")
-fig_dir           = Path(f"./figures/{site}/")  
+fig_dir           = Path(f"./figures/{site}/")
 fig_dir.mkdir(parents=True, exist_ok=True)
+latex_dir         = Path(f"./results/latex/{site}/")
+latex_dir.mkdir(parents=True, exist_ok=True)
 
 # --- Load data ---
 df = pd.read_csv(csv_path)
-years = df["year"].values
-mean_sfd = df[f"sfd_lt{threshold}"].values
+years        = df["year"].values
+mean_sfd     = df[f"sfd_lt{threshold}"].values
+mean_sfd_bridged = df[f"sfd_bridged_lt{threshold}"].values
 
 print(f"Loaded {len(years)} years from {csv_path}")
 print(f"Year range: {years[0]}–{years[-1]}")
@@ -55,24 +58,32 @@ print("\n" + "=" * 60)
 print(f"Trend analysis: mean snow-free days (threshold < {threshold}%)")
 print("=" * 60)
 
-mk_mean = mk.original_test(mean_sfd, alpha=alpha)
-print(f"  Mann-Kendall trend:  {mk_mean.trend}")
-print(f"  p-value:             {mk_mean.p:.4f}")
-print(f"  Sen's slope:         {mk_mean.slope:.3f} days/year")
-print(f"  Intercept:           {mk_mean.intercept:.3f}")
-print(f"  Significant (α={alpha}): {mk_mean.p < alpha}")
+mk_mean        = mk.original_test(mean_sfd, alpha=alpha)
+mk_mean_bridged = mk.original_test(mean_sfd_bridged, alpha=alpha)
+
+for label, result in [("Standard", mk_mean), ("Bridged (≤5d gaps)", mk_mean_bridged)]:
+    print(f"\n  [{label}]")
+    print(f"  Mann-Kendall trend:  {result.trend}")
+    print(f"  p-value:             {result.p:.4f}")
+    print(f"  Sen's slope:         {result.slope:.3f} days/year")
+    print(f"  Intercept:           {result.intercept:.3f}")
+    print(f"  Significant (α={alpha}): {result.p < alpha}")
 
 # --- Plot ---
 fig, ax = plt.subplots(figsize=(12, 5))
 ax.plot(years, mean_sfd, "o-", color="steelblue", linewidth=1.5,
-        markersize=5, label="Mean snow-free days")
+        markersize=5, label="Snow-free days (standard)")
+ax.plot(years, mean_sfd_bridged, "s--", color="darkorange", linewidth=1.5,
+        markersize=5, label="Snow-free days (bridged ≤5d gaps)")
 
-if mk_mean.p < alpha:
-    trend_line = mk_mean.intercept + mk_mean.slope * np.arange(len(years))
-    ax.plot(years, trend_line, "--", color="firebrick", linewidth=2,
-            label=f"Sen's slope: {mk_mean.slope:.2f} d/yr (p={mk_mean.p:.3f})")
-else:
-    ax.text(0.5, 0.95, f"No significant trend (p={mk_mean.p:.2f})",
+for result, color in [(mk_mean, "steelblue"), (mk_mean_bridged, "darkorange")]:
+    if result.p < alpha:
+        trend_line = result.intercept + result.slope * np.arange(len(years))
+        ax.plot(years, trend_line, "-", color=color, linewidth=2, alpha=0.6,
+                label=f"Sen's slope: {result.slope:.2f} d/yr (p={result.p:.3f})")
+
+if mk_mean.p >= alpha and mk_mean_bridged.p >= alpha:
+    ax.text(0.5, 0.95, f"No significant trends",
             transform=ax.transAxes, ha="center", va="top",
             fontsize=11, color="gray", style="italic")
 
@@ -139,26 +150,33 @@ print(f"\n  Saved: trend_interannual_variability.png")
 print("\n" + "=" * 60)
 print("Summary")
 print("=" * 60)
-print(f"{'Metric':<35} {'Slope':>10} {'p-value':>10} {'Significant':>12}")
-print("-" * 67)
-print(f"{'Mean snow-free days':<35} {mk_mean.slope:>10.3f} {mk_mean.p:>10.4f} "
-      f"{'Yes' if mk_mean.p < alpha else 'No':>12}")
-print(f"{'Interannual variability (5yr)':<35} {mk_var.slope:>10.3f} {mk_var.p:>10.4f} "
-      f"{'Yes' if mk_var.p < alpha else 'No':>12}")
+print(f"{'Metric':<40} {'Slope':>10} {'p-value':>10} {'Significant':>12}")
+print("-" * 72)
+rows = [
+    ("Mean snow-free days",              mk_mean),
+    ("Mean snow-free days (bridged)",    mk_mean_bridged),
+    (f"Interannual variability (5yr)",   mk_var),
+]
+for name, result in rows:
+    print(f"{name:<40} {result.slope:>10.3f} {result.p:>10.4f} "
+          f"{'Yes' if result.p < alpha else 'No':>12}")
 
 # LaTeX table
-tex_path = fig_dir / "trend_summary.tex"
+tex_path = latex_dir / f"trend_summary_{site}.tex"
 with open(tex_path, "w") as f:
     f.write("\\begin{table}[ht]\n")
     f.write("\\centering\n")
     f.write("\\caption{Mann-Kendall trend analysis of snow-free days, "
-            f"{site.capitalize()} (NDSI threshold $<$ {threshold}\\%).}}\n")
+            f"{site.capitalize()} (NDSI threshold $<$ {threshold}\\%). "
+            "\\textit{Bridged} counts short snowy spells ($\\leq$5 consecutive days) "
+            "as snow-free.}}\n")
     f.write("\\label{tab:trend_summary}\n")
     f.write("\\begin{tabular}{lrrr}\n")
     f.write("\\hline\n")
     f.write("Metric & Sen's slope (d\\,yr$^{-1}$) & $p$-value & Significant \\\\\n")
     f.write("\\hline\n")
-    for name, result in [("Mean snow-free days", mk_mean),
+    for name, result in [("Mean snow-free days",           mk_mean),
+                         ("Mean snow-free days (bridged)", mk_mean_bridged),
                          (f"Interannual variability ({rolling_window}\\,yr)", mk_var)]:
         sig = "Yes" if result.p < alpha else "No"
         f.write(f"{name} & {result.slope:.3f} & {result.p:.4f} & {sig} \\\\\n")

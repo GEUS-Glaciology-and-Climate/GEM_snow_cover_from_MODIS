@@ -40,8 +40,10 @@ with open(f"config/{args.site}.yml") as f:
 
 site              = cfg["site"]
 csv_dir           = Path(f"{workingdir}/results/csvs/{site}/")
-fig_dir           = Path(f"{workingdir}/figures/{site}/")  
+fig_dir           = Path(f"{workingdir}/figures/{site}/")
 fig_dir.mkdir(parents=True, exist_ok=True)
+latex_dir         = Path(f"{workingdir}/results/latex/{site}/")
+latex_dir.mkdir(parents=True, exist_ok=True)
 
 # --- Load and merge data ---
 print("Loading data...")
@@ -210,7 +212,7 @@ print("\n  (β weights are directly comparable: larger |β| = stronger effect)")
 # ============================================================
 # 7. LaTeX table
 # ============================================================
-tex_path = fig_dir / "regression_results.tex"
+tex_path = latex_dir / f"regression_results_{site}.tex"
 with open(tex_path, "w") as f:
     f.write("\\begin{table}[ht]\n")
     f.write("\\centering\n")
