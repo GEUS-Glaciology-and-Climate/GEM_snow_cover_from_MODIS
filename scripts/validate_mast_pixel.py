@@ -302,9 +302,8 @@ for thresh in modis_thresholds:
         if grp[col].notna().sum() < 150:
             continue
         rows.append({"year": year, col: int((grp[col] == 1).sum())})
-    sfd_modis = sfd_modis.join(
-        pd.DataFrame(rows).set_index("year"), how="outer"
-    )
+    tmp = pd.DataFrame(rows, columns=["year", col]).set_index("year") if rows else pd.DataFrame(columns=[col])
+    sfd_modis = sfd_modis.join(tmp, how="outer")
 
 # --- Load area-mean MODIS snow-free days for all thresholds ---
 area_csv = Path(f"results/csvs/{site}/snow_free_days.csv")
@@ -339,25 +338,70 @@ for thresh in modis_thresholds:
     bias = (merged[col] - merged["sfd_insitu"]).mean()
     print(f"  {thresh:>9}%  {r:>11.3f}  {bias:>+8.1f}")
 
+# ============================================================
+# Gap-filling uncertainty: count filled days during snow-free period
+# ============================================================
+print("\n" + "=" * 60)
+print("Gap-filling uncertainty (mast pixel, NDSI < 40%)")
+print("=" * 60)
+
+if "cloud_persistence" not in modis_px.columns:
+    print("  WARNING: cloud_persistence not in mast pixel CSV — "
+          "re-run get_snow_free_days.py to regenerate it.")
+    gap_df = pd.DataFrame(columns=["year", "sfd_total", "sfd_filled", "pct_filled"])
+else:
+    gap_rows = []
+    snow_col = f"snow_lt{primary}"
+    for year, grp in modis_px.groupby("year"):
+        if grp[snow_col].notna().sum() < 150:
+            continue
+        snow_free = grp[grp[snow_col] == 1]
+        sfd_total  = len(snow_free)
+        sfd_filled = int((snow_free["cloud_persistence"] > 0).sum())
+        gap_rows.append({"year": year, "sfd_total": sfd_total,
+                         "sfd_filled": sfd_filled,
+                         "pct_filled": 100 * sfd_filled / sfd_total if sfd_total > 0 else np.nan})
+    gap_df = (pd.DataFrame(gap_rows).set_index("year") if gap_rows
+              else pd.DataFrame(columns=["sfd_total", "sfd_filled", "pct_filled"]))
+
+    print(f"\n  {'Year':>6} {'SFD total':>10} {'Filled days':>12} {'% filled':>10}")
+    print("  " + "-" * 42)
+    for year, row in gap_df.iterrows():
+        print(f"  {year:>6} {row['sfd_total']:>10.0f} {row['sfd_filled']:>12.0f} "
+              f"{row['pct_filled']:>9.1f}%")
+
+    csv_out_dir = Path(f"results/csvs/{site}/")
+    gap_csv = csv_out_dir / f"gap_filled_snow_free_days_{site}.csv"
+    gap_df.to_csv(gap_csv)
+    print(f"\n  Saved: {gap_csv}")
+
 # --- Plot ---
 cmap   = plt.cm.viridis
 colors = cmap(np.linspace(0.1, 0.9, len(modis_thresholds)))
 
-# Two-row layout: full-width time series on top, two scatter panels below.
-# Width = 174 mm (double-column journal standard), height scaled to fit.
-fig2 = plt.figure(figsize=(6.85, 8.0))
-gs   = fig2.add_gridspec(2, 2, hspace=0.42, wspace=0.38,
-                          top=0.95, bottom=0.07, left=0.09, right=0.97)
-ax_ts = fig2.add_subplot(gs[0, :])   # top: full width
-ax_s1 = fig2.add_subplot(gs[1, 0])  # bottom left
-ax_s2 = fig2.add_subplot(gs[1, 1])  # bottom right
+# Disko has insufficient mast pixel data for scatter validation panels —
+# produce a single time series panel only.
+single_panel = (site == "disko")
 
-# Panel (a): time series — in situ + mast pixel all thresholds
+if single_panel:
+    fig2, ax_ts = plt.subplots(figsize=(6.85, 3.5))
+    fig2.subplots_adjust(top=0.93, bottom=0.13, left=0.09, right=0.97)
+else:
+    # Two-row layout: full-width time series on top, two scatter panels below.
+    # Width = 174 mm (double-column journal standard), height scaled to fit.
+    fig2 = plt.figure(figsize=(6.85, 8.0))
+    gs   = fig2.add_gridspec(2, 2, hspace=0.42, wspace=0.38,
+                              top=0.95, bottom=0.07, left=0.09, right=0.97)
+    ax_ts = fig2.add_subplot(gs[0, :])   # top: full width
+    ax_s1 = fig2.add_subplot(gs[1, 0])  # bottom left
+    ax_s2 = fig2.add_subplot(gs[1, 1])  # bottom right
+
+# Panel (a): time series — in situ + area mean all thresholds
 ax_ts.plot(sfd_insitu.index, sfd_insitu["sfd_insitu"], "o-", color="steelblue",
            linewidth=2, markersize=5, label=f"In situ (albedo < {albedo_threshold})", zorder=5)
 for thresh, color in zip(modis_thresholds, colors):
-    col = f"snow_lt{thresh}"
-    valid = sfd_modis[col].dropna()
+    area_col = f"sfd_lt{thresh}"
+    valid = sfd_area[area_col].dropna()
     ax_ts.plot(valid.index, valid.values, "--", color=color,
                linewidth=1, markersize=3, marker="s", label=f"NDSI < {thresh}%")
 ax_ts.set_xlabel("Year", fontsize=9)
@@ -365,7 +409,8 @@ ax_ts.set_ylabel("Snow-free days per year", fontsize=9)
 ax_ts.legend(fontsize=7, ncol=4, loc="upper left")
 ax_ts.grid(True, alpha=0.3)
 ax_ts.tick_params(labelsize=8)
-ax_ts.text(-0.07, 1.02, "(a)", transform=ax_ts.transAxes, fontsize=10, fontweight="bold")
+if not single_panel:
+    ax_ts.text(-0.07, 1.02, "(a)", transform=ax_ts.transAxes, fontsize=10, fontweight="bold")
 
 def scatter_panel(ax, x_vals, y_vals, years, xlabel, ylabel, label):
     lims = [0, max(x_vals.max(), y_vals.max()) + 10]
@@ -386,27 +431,29 @@ def scatter_panel(ax, x_vals, y_vals, years, xlabel, ylabel, label):
     ax.tick_params(labelsize=8)
     ax.text(-0.16, 1.02, label, transform=ax.transAxes, fontsize=10, fontweight="bold")
 
-# Panel (b): scatter — in situ vs mast pixel, primary threshold only
-col = f"snow_lt{primary}"
-merged2 = sfd_insitu.join(sfd_modis[[col]], how="inner").dropna()
-scatter_panel(ax_s1,
-              x_vals=merged2["sfd_insitu"].values,
-              y_vals=merged2[col].values,
-              years=merged2.index,
-              xlabel=f"In situ (albedo < {albedo_threshold})",
-              ylabel=f"MODIS mast pixel (NDSI < {primary}%)",
-              label="(b)")
+if not single_panel:
+    # Panel (b): scatter — in situ vs mast pixel, primary threshold only
+    col = f"snow_lt{primary}"
+    merged2 = sfd_insitu.join(sfd_modis[[col]], how="inner").dropna()
+    scatter_panel(ax_s1,
+                  x_vals=merged2["sfd_insitu"].values,
+                  y_vals=merged2[col].values,
+                  years=merged2.index,
+                  xlabel=f"In situ (albedo < {albedo_threshold})",
+                  ylabel=f"MODIS mast pixel (NDSI < {primary}%)",
+                  label="(b)")
 
-# Panel (c): scatter — mast pixel vs area mean, primary threshold only
-area_col = f"sfd_lt{primary}"
-merged3 = sfd_modis[[col]].join(sfd_area[[area_col]], how="inner").dropna()
-scatter_panel(ax_s2,
-              x_vals=merged3[col].values,
-              y_vals=merged3[area_col].values,
-              years=merged3.index,
-              xlabel=f"MODIS mast pixel (NDSI < {primary}%)",
-              ylabel=f"MODIS area mean (NDSI < {primary}%)",
-              label="(c)")
+    # Panel (c): scatter — mast pixel vs area mean, primary threshold only
+    col      = f"snow_lt{primary}"
+    area_col = f"sfd_lt{primary}"
+    merged3 = sfd_modis[[col]].join(sfd_area[[area_col]], how="inner").dropna()
+    scatter_panel(ax_s2,
+                  x_vals=merged3[col].values,
+                  y_vals=merged3[area_col].values,
+                  years=merged3.index,
+                  xlabel=f"MODIS mast pixel (NDSI < {primary}%)",
+                  ylabel=f"MODIS area mean (NDSI < {primary}%)",
+                  label="(c)")
 
 fig2.savefig(out_dir / "sfd_insitu_vs_modis.png", dpi=300)
 print(f"\n  Saved: figures/{site}/sfd_insitu_vs_modis.png")

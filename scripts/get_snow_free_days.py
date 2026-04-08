@@ -21,6 +21,7 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import geopandas as gpd
 from pathlib import Path
+from scipy.ndimage import binary_closing
 
 # --- Args ---
 parser = argparse.ArgumentParser()
@@ -37,7 +38,7 @@ station     = cfg["station_id"]
 nc_dir        = Path(f"netcdf/{site}_masked/")
 out_dir       = Path(f"figures/{site}/")
 csv_out_dir   = Path(f"results/csvs/{site}/")
-latex_dir     = Path("results/latex/")
+latex_dir     = Path(f"results/latex/{site}/")
 aws_stations_path = Path(cfg["aws_stations"])
 
 out_dir.mkdir(parents=True, exist_ok=True)
@@ -73,9 +74,12 @@ print(f"Value range: {float(da.min()):.1f} to {float(da.max()):.1f}")
 # Count per year per pixel, then average spatially.
 
 years = np.unique(da.time.dt.year.values)
-results = {t: [] for t in thresholds}
-cp_stats = {"mean": [], "std": [], "min": [], "max": []}
+results         = {t: [] for t in thresholds}
+results_bridged = {t: [] for t in thresholds}
+cp_stats     = {"mean": [], "std": [], "min": [], "max": []}
+cp_sfd_stats = {"mean": [], "std": [], "min": [], "max": []}
 years_used = []
+max_gap = 5  # bridge snowy spells ≤ this many consecutive days
 
 for year in years:
     yearly = da.sel(time=da.time.dt.year == year)
@@ -84,16 +88,36 @@ for year in years:
         continue
     years_used.append(year)
     valid_pixels = yearly.notnull().any(dim="time")
+    yearly_vals  = yearly.values          # (time, x, y) numpy, NaN = invalid
+    valid_px     = valid_pixels.values    # (x, y) bool
+    structure    = np.ones((max_gap + 1, 1, 1), dtype=bool)
+
     for thresh in thresholds:
         snow_free = (yearly < thresh).sum(dim="time")             # per-pixel count
         mean_days = float(snow_free.where(valid_pixels).mean())   # land pixels only
         results[thresh].append(mean_days)
+
+        # Bridged count: flip snowy runs ≤ max_gap days to snow-free
+        snow_free_bin = (yearly_vals < thresh)   # NaN < thresh evaluates False (snowy)
+        bridged       = binary_closing(snow_free_bin, structure=structure)
+        bridged_count = bridged.sum(axis=0).astype(float)
+        bridged_count[~valid_px] = np.nan
+        results_bridged[thresh].append(float(np.nanmean(bridged_count)))
 
     yearly_cp = cp.sel(time=cp.time.dt.year == year)
     cp_stats["mean"].append(float(yearly_cp.mean()))
     cp_stats["std"].append(float(yearly_cp.std()))
     cp_stats["min"].append(float(yearly_cp.min()))
     cp_stats["max"].append(float(yearly_cp.max()))
+
+    # Cloud persistence restricted to snow-free days (primary threshold 40%)
+    snow_free_mask = yearly < 40
+    cp_sfd = yearly_cp.where(snow_free_mask)
+    cp_sfd_stats["mean"].append(float(cp_sfd.mean()))
+    cp_sfd_stats["std"].append(float(cp_sfd.std()))
+    cp_sfd_stats["min"].append(float(cp_sfd.min()))
+    cp_sfd_stats["max"].append(float(cp_sfd.max()))
+
     print(f"  {year}: done ({len(yearly.time)} days)")
 
 # --- Plot: threshold sensitivity ---
@@ -121,7 +145,8 @@ import pandas as pd
 
 df = pd.DataFrame({"year": years_used})
 for thresh in thresholds:
-    df[f"sfd_lt{thresh}"] = results[thresh]
+    df[f"sfd_lt{thresh}"]         = results[thresh]
+    df[f"sfd_bridged_lt{thresh}"] = results_bridged[thresh]
 
 csv_path = csv_out_dir / "snow_free_days.csv"
 df.to_csv(csv_path, index=False)
@@ -207,6 +232,47 @@ with open(cp_latex_path, "w") as f:
 
 print(f"Saved LaTeX table: {cp_latex_path}")
 
+# --- Export cloud persistence stats for snow-free days only ---
+cp_sfd_df = pd.DataFrame({
+    "year":    years_used,
+    "cp_mean": cp_sfd_stats["mean"],
+    "cp_std":  cp_sfd_stats["std"],
+    "cp_min":  cp_sfd_stats["min"],
+    "cp_max":  cp_sfd_stats["max"],
+})
+cp_sfd_csv_path = csv_out_dir / "cloud_persistence_stats_snow_free.csv"
+cp_sfd_df.to_csv(cp_sfd_csv_path, index=False)
+print(f"Saved CSV: {cp_sfd_csv_path}")
+
+print("\n" + "=" * 60)
+print("Cloud persistence stats — snow-free days only (NDSI < 40%)")
+print("=" * 60)
+print(f"{'Year':>6} {'Mean':>8} {'Std':>8} {'Min':>8} {'Max':>8}")
+print("-" * 42)
+for _, row in cp_sfd_df.iterrows():
+    print(f"{int(row.year):>6} {row.cp_mean:8.2f} {row.cp_std:8.2f} "
+          f"{row.cp_min:8.0f} {row.cp_max:8.0f}")
+
+cp_sfd_latex_path = latex_dir / f"cloud_persistence_stats_snow_free_{site}.tex"
+with open(cp_sfd_latex_path, "w") as f:
+    f.write("\\begin{table}[ht]\n")
+    f.write("\\centering\n")
+    f.write("\\caption{Annual cloud persistence statistics restricted to snow-free days "
+            f"(NDSI $<$ 40\\%), {site.capitalize()}. Values indicate the number of days "
+            "of gap-filling applied; 0 = directly observed.}\n")
+    f.write(f"\\label{{tab:cloud_persistence_sfd_{site}}}\n")
+    f.write("\\begin{tabular}{lrrr}\n")
+    f.write("\\hline\n")
+    f.write("Year & Mean (days) & Std (days) & Max (days) \\\\\n")
+    f.write("\\hline\n")
+    for _, row in cp_sfd_df.iterrows():
+        f.write(f"{int(row.year)} & {row.cp_mean:.2f} & {row.cp_std:.2f} & "
+                f"{row.cp_max:.0f} \\\\\n")
+    f.write("\\hline\n")
+    f.write("\\end{tabular}\n")
+    f.write("\\end{table}\n")
+print(f"Saved LaTeX table: {cp_sfd_latex_path}")
+
 # ============================================================
 # 4. Supplementary overview: daily mean SCF and cloud persistence per year
 # ============================================================
@@ -279,10 +345,12 @@ print(f"  {station} mast position: x={mast_x:.1f}, y={mast_y:.1f} (EPSG:{target_
 # glacier body that is removed from the masked variable.
 # da_unmasked = ds["snow_cover_fraction"].where(ds["snow_cover_fraction"] <= 100)
 pixel = da.sel(x=mast_x, y=mast_y, method="nearest")
+cp_pixel = cp.sel(x=mast_x, y=mast_y, method="nearest")
 print(f"  Nearest MODIS pixel: x={float(pixel.x):.1f}, y={float(pixel.y):.1f}")
 
-# Build output dataframe: date, raw SCF value, snow flag per threshold
-mast_df = pd.DataFrame({"date": pixel.time.values, "scf": pixel.values})
+# Build output dataframe: date, raw SCF value, cloud persistence, snow flag per threshold
+mast_df = pd.DataFrame({"date": pixel.time.values, "scf": pixel.values,
+                         "cloud_persistence": cp_pixel.values})
 for thresh in thresholds:
     mast_df[f"snow_lt{thresh}"] = (mast_df["scf"] < thresh).astype("Int64")
     # Set to NA where SCF was invalid (NaN)
@@ -291,5 +359,61 @@ for thresh in thresholds:
 mast_csv_path = csv_out_dir / f"mast_pixel_snow_{station}.csv"
 mast_df.to_csv(mast_csv_path, index=False)
 print(f"  Saved: {mast_csv_path}")
+
+# --- Cloud persistence stats for snow-free days at mast pixel only ---
+mast_df["year"] = pd.to_datetime(mast_df["date"]).dt.year
+snow_col = f"snow_lt{40}"   # primary threshold
+mast_cp_sfd_rows = []
+for year, grp in mast_df.groupby("year"):
+    if grp[snow_col].notna().sum() < 150:
+        continue
+    snow_free = grp[grp[snow_col] == 1]
+    cp_vals = snow_free["cloud_persistence"].dropna()
+    if len(cp_vals) == 0:
+        continue
+    mast_cp_sfd_rows.append({
+        "year":    year,
+        "cp_mean": float(cp_vals.mean()),
+        "cp_std":  float(cp_vals.std()),
+        "cp_min":  float(cp_vals.min()),
+        "cp_max":  float(cp_vals.max()),
+    })
+
+mast_cp_sfd_df = pd.DataFrame(mast_cp_sfd_rows)
+
+if not mast_cp_sfd_df.empty:
+    mast_cp_sfd_csv = csv_out_dir / f"cloud_persistence_stats_snow_free_mast_{site}.csv"
+    mast_cp_sfd_df.to_csv(mast_cp_sfd_csv, index=False)
+    print(f"  Saved: {mast_cp_sfd_csv}")
+
+    print(f"\n  Cloud persistence on snow-free days — mast pixel (NDSI < 40%)")
+    print(f"  {'Year':>6} {'Mean':>8} {'Std':>8} {'Min':>8} {'Max':>8}")
+    print("  " + "-" * 42)
+    for _, row in mast_cp_sfd_df.iterrows():
+        print(f"  {int(row.year):>6} {row.cp_mean:8.2f} {row.cp_std:8.2f} "
+              f"{row.cp_min:8.0f} {row.cp_max:8.0f}")
+
+    mast_cp_sfd_latex = latex_dir / f"cloud_persistence_stats_snow_free_mast_{site}.tex"
+    with open(mast_cp_sfd_latex, "w") as f:
+        f.write("\\begin{table}[ht]\n")
+        f.write("\\centering\n")
+        f.write("\\caption{Annual cloud persistence statistics at the climate mast pixel "
+                f"restricted to snow-free days (NDSI $<$ 40\\%), {site.capitalize()}. "
+                "Values indicate the number of days since the last direct observation; "
+                "0 = directly observed.}\n")
+        f.write(f"\\label{{tab:cp_sfd_mast_{site}}}\n")
+        f.write("\\begin{tabular}{lrrr}\n")
+        f.write("\\hline\n")
+        f.write("Year & Mean (days) & Std (days) & Max (days) \\\\\n")
+        f.write("\\hline\n")
+        for _, row in mast_cp_sfd_df.iterrows():
+            f.write(f"{int(row.year)} & {row.cp_mean:.2f} & {row.cp_std:.2f} & "
+                    f"{row.cp_max:.0f} \\\\\n")
+        f.write("\\hline\n")
+        f.write("\\end{tabular}\n")
+        f.write("\\end{table}\n")
+    print(f"  Saved LaTeX table: {mast_cp_sfd_latex}")
+else:
+    print("  No years with sufficient mast pixel data — skipping mast CP stats.")
 
 mast_df.plot()
