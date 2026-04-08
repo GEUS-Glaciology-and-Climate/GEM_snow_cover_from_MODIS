@@ -87,7 +87,9 @@ than 10% valid land observations (e.g. polar night) are left as NaN.
 Output: `netcdf/{site}_filled/{site}_scf_{year}_filled.nc` with variables `scf_filled`
 (land=observed, glacier=RF-predicted) and `fill_flag`.
 
-### 8. Elevation band analysis
+An XGBoost variant is also available via `scripts/fill_glacier_scf_xgb.py`.
+
+### 9. Elevation band analysis
 
     make elevation-bands SITE=zackenberg
     # python scripts/analyse_elevation_bands.py --site zackenberg --source masked
@@ -96,7 +98,7 @@ Output: `netcdf/{site}_filled/{site}_scf_{year}_filled.nc` with variables `scf_f
 Bins pixels into 100 m elevation bands and computes mean annual snow-free days per band.
 Running both sources generates comparison line plots and a difference heatmap automatically.
 
-### 9. Climate predictors
+### 10. Climate predictors
 
     make derive-climate
     # python scripts/derive_climate_predictors.py
@@ -104,7 +106,7 @@ Running both sources generates comparison line plots and a difference heatmap au
 Derives PDD, winter precipitation, and melt days from CARRA reanalysis NetCDFs.
 Output: `results/csvs/{site}/climate_predictors_{site}.csv`.
 
-### 10. Analysis
+### 11. Analysis
 
     make analyse
     # python scripts/analyse_trends.py          — Mann-Kendall + Sen's slope
@@ -123,8 +125,6 @@ All analysis scripts write figures to `figures/{site}/` and LaTeX table snippets
     │   ├── nuuk.yml
     │   └── disko.yml
     ├── scripts/
-    │   ├── melt_model/                  # Degree-day melt model (separate from observations)
-    │   │   └── compute_melt.py          # Gridded daily snow/ice melt from CARRA + SCF
     │   ├── download.py                  # Download MOD10A1F HDF files via earthaccess
     │   ├── clip.py                      # Reproject, clip to AOI, write annual NetCDFs
     │   ├── mask_scf.py                  # Apply land/ice masks (glacier pixels → NaN)
@@ -132,14 +132,16 @@ All analysis scripts write figures to `figures/{site}/` and LaTeX table snippets
     │   ├── get_snow_free_days.py        # Compute snow-free days across NDSI thresholds
     │   ├── validate_mast_pixel.py       # Compare MODIS mast pixel vs in situ observations
     │   ├── validate_glacier_scf.py      # Glacier SCF: observed vs RF-predicted by elevation band
-    │   ├── fill_glacier_scf.py          # RF glacier gap-filling + validation
+    │   ├── fill_glacier_scf.py          # RF glacier gap-filling
+    │   ├── fill_glacier_scf_xgb.py      # XGBoost glacier gap-filling (alternative to RF)
     │   ├── analyse_elevation_bands.py   # Snow-free days by 100 m elevation band
     │   ├── derive_climate_predictors.py # Compute PDD, winter precip, melt days (CARRA)
     │   ├── load_climate_drivers.py      # Helper for loading CARRA climate data
     │   ├── analyse_trends.py            # Mann-Kendall trend test on snow-free days
     │   ├── analyse_driver_trends.py     # Trends in PDD, winter precip, and snow-free days
     │   ├── analyse_correlations.py      # Pearson and partial correlations + VIF
-    │   └── analyse_regression.py        # OLS regression with residual diagnostics
+    │   ├── analyse_regression.py        # OLS regression with residual diagnostics
+    │   └── publish_ndsi.py              # Export clean masked NDSI NetCDFs for publication
     ├── data/
     │   └── CARRA/                       # CARRA reanalysis NetCDFs (t2m, tp at stations)
     ├── shp/                             # AOI polygons and station positions
@@ -150,23 +152,10 @@ All analysis scripts write figures to `figures/{site}/` and LaTeX table snippets
     │   └── {site}_filled/               # Annual SCF NetCDFs (glacier gap-filled by RF)
     ├── results/
     │   └── csvs/                        # Intermediate and final CSVs
-    └── figures/
-        └── {site}/                      # Output plots and LaTeX tables
-
-## Melt Model
-
-Scripts in `scripts/melt_model/` are kept separate from the observation pipeline.
-They consume outputs from the observation pipeline (terrain, masked SCF, gap-filled SCF,
-CARRA temperature) but represent a distinct modelling step.
-
-    make melt SITE=zackenberg
-    # python scripts/melt_model/compute_melt.py --site zackenberg
-
-Applies a degree-day model to produce daily gridded snow and ice melt (mm w.e./day):
-- CARRA 2m temperature is downscaled to each MODIS pixel via a standard lapse rate
-- Surface type (snow / bare ice / bare land) is determined from masked and gap-filled SCF
-- Melt = DDF × PDD, with separate degree-day factors for snow and ice
-- Output: `netcdf/{site}_melt/{site}_melt_{year}.nc`
+    ├── figures/
+    │   └── {site}/                      # Output plots and LaTeX tables
+    └── publish/
+        └── {site}/                      # Clean masked NDSI NetCDFs for publication
 
 ## Key Conventions
 
