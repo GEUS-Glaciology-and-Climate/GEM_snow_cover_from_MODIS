@@ -14,3 +14,7 @@ results/
 # Melt model (work in progress, not yet published)
 scripts/melt_model/
 Makefile.melt
+
+# Not yet ready for publication
+Manuscript/
+publish/
