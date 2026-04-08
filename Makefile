@@ -28,6 +28,9 @@ validate:
 fill-glaciers:
 	$(PYTHON) scripts/fill_glacier_scf.py --site $(SITE)
 
+fill-glaciers-xgb:
+	$(PYTHON) scripts/fill_glacier_scf_xgb.py --site $(SITE)
+
 # Runs masked then filled so the comparison plots are generated automatically
 elevation-bands:
 	$(PYTHON) scripts/analyse_elevation_bands.py --site $(SITE) --source masked
@@ -56,36 +59,8 @@ correlations:
 regression:
 	$(PYTHON) scripts/analyse_regression.py --site $(SITE)
 
-analyse: derive-climate trends driver-trends correlations regression 
-
-
-# ============================================================
-# Melt model
-# ============================================================
-
-lapse-rates:
-	$(PYTHON) scripts/melt_model/compute_lapse_rates.py --site $(SITE)
-
-solar-shading:
-	$(PYTHON) scripts/melt_model/compute_solar_shading.py --site $(SITE)
-
-ddf-scale:
-	$(PYTHON) scripts/melt_model/compute_ddf_scale.py --site $(SITE)
-
-melt:
-	$(PYTHON) scripts/melt_model/compute_melt.py --site $(SITE)
-
-catchment-melt:
-	$(PYTHON) scripts/melt_model/catchment_melt.py --site $(SITE)
-
-melt-plots:
-	$(PYTHON) scripts/melt_model/plot_catchment_melt_annual.py --site $(SITE)
-
-validate-melt:
-	$(PYTHON) scripts/melt_model/validate_ice_melt.py --site $(SITE)
-
-
+analyse: derive-climate trends driver-trends correlations regression
 
 .PHONY: download clip mask snow-free-days terrain validate validate-glacier fill-glaciers \
-        elevation-bands preprocess derive-climate trends driver-trends correlations \
-        regression analyse melt download-zackenberg download-disko
+        fill-glaciers-xgb elevation-bands preprocess derive-climate trends driver-trends \
+        correlations regression analyse

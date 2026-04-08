@@ -10,3 +10,7 @@ shp/
 # Generated outputs
 figures/
 results/
+
+# Melt model (work in progress, not yet published)
+scripts/melt_model/
+Makefile.melt
