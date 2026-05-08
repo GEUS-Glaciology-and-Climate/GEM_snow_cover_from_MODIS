@@ -29,6 +29,7 @@ SITES = {
         "lat_int":   0.5,
         "lon_int":   1.0,
         "inset_loc": [0.01, 0.57, 0.42, 0.42],  # [x0, y0, w, h] in axes fraction
+        "connector_corners": (0, 3),  # BL + TR corners of zoom rect
     },
     "Disko": {
         "nc_dir":    workingdir / "netcdf" / "disko_masked",
@@ -38,6 +39,7 @@ SITES = {
         "lat_int":   1.0,
         "lon_int":   2.0,
         "inset_loc": [0.01, 0.63, 0.35, 0.35],
+        "connector_corners": (0, 3),  # BL + TR corners of zoom rect
     },
     "Nuuk": {
         "nc_dir":    workingdir / "netcdf" / "nuuk_masked",
@@ -242,7 +244,7 @@ for name, cfg in SITES.items():
     ax.set_yticks([])
     for spine in ax.spines.values():
         spine.set_linewidth(0.8)
-    ax.set_title(name, fontsize=10, fontweight="bold", pad=24)
+    #ax.set_title(name, fontsize=10, fontweight="bold", pad=24)
 
     # Main graticule
     tf_fwd  = pyproj.Transformer.from_crs("EPSG:4326", crs, always_xy=True)
@@ -361,7 +363,11 @@ for name, cfg in SITES.items():
                   "2 km", ha="center", va="top", fontsize=5.5, zorder=7)
 
     # Connect inset to its location on the main map
-    ax.indicate_inset_zoom(inset_ax, edgecolor="#333333", alpha=0.7, lw=0.8)
+    # Bbox.corners() order: [BL(0), TL(1), BR(2), TR(3)] in display coords
+    _indicator = ax.indicate_inset_zoom(inset_ax, edgecolor="#333333", alpha=0.7, lw=0.8)
+    if "connector_corners" in cfg:
+        for i, conn in enumerate(_indicator.connectors):
+            conn.set_visible(i in cfg["connector_corners"])
 
     for ext in ("png", "pdf"):
         outpath = outdir / f"site_map_{name.lower()}.{ext}"
