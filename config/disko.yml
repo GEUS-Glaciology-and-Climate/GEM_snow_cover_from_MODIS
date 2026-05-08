@@ -16,7 +16,7 @@ ice_shp: /home/shl/mdrev/data/sdfi/G250_VEKTOR/Is.shp
 
 # In situ validation
 station_id: disko
-aws_stations: data/mast_locations.csv
+aws_stations: data/mast_locations_proximity.csv
 gem_dir: /home/shl/mdrev/data/GEM/disko/
 insitu_temperature: "AWS2-Meteorology_10.17897_CSZT-F010_data.txt"
 insitu_snowdepth: "AWS2-SnowDepth_10.17897_SCXW-S288_data.txt"

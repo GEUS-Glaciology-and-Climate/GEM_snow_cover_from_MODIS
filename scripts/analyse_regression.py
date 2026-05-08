@@ -47,7 +47,7 @@ latex_dir.mkdir(parents=True, exist_ok=True)
 
 # --- Load and merge data ---
 print("Loading data...")
-sfd = pd.read_csv(csv_dir / "snow_free_days.csv")
+sfd = pd.read_csv(csv_dir / "snow_free_days_mast_pixel.csv")
 climate = pd.read_csv(f"{csv_dir}/climate_predictors_{site}.csv")
 
 df = pd.merge(sfd[["year", f"sfd_lt{threshold}"]], climate, on="year", how="inner")

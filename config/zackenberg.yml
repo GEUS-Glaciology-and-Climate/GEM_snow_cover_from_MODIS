@@ -16,7 +16,7 @@ ice_shp: /home/shl/mdrev/data/sdfi/G250_VEKTOR/Is.shp
 
 # In situ validation
 station_id: zackenberg
-aws_stations: data/mast_locations.csv
+aws_stations: data/mast_locations_proximity.csv
 gem_dir: /home/shl/mdrev/data/GEM/zackenberg/
 insitu_temperature: Air_temperature_200cm_60_30min_sample_10.17897_G5WS-0W04_data.txt
 insitu_snowdepth: Snow depth - 180min sample (m)_10.17897_7RVV-Z412_data.txt

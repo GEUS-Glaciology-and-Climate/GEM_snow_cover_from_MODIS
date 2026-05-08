@@ -54,7 +54,7 @@ if not nc_files:
     raise FileNotFoundError(f"No NetCDF files found in {nc_dir}")
 
 print(f"Found {len(nc_files)} annual files")
-ds = xr.open_mfdataset(nc_files, combine="nested", concat_dim="time", chunks={"time": 30})
+ds = xr.open_mfdataset(nc_files, combine="nested", concat_dim="time", chunks={"time": 30}, join="override")
 da = ds[variable]
 cp = ds["cloud_persistence_masked"].where(ds["cloud_persistence_masked"] < 255)  # 255 = fill value
 

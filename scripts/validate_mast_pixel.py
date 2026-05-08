@@ -338,6 +338,14 @@ for thresh in modis_thresholds:
     bias = (merged[col] - merged["sfd_insitu"]).mean()
     print(f"  {thresh:>9}%  {r:>11.3f}  {bias:>+8.1f}")
 
+# --- Save mast pixel snow-free days CSV ---
+mast_csv = Path(f"results/csvs/{site}/snow_free_days_mast_pixel.csv")
+mast_out = sfd_insitu.join(sfd_modis, how="outer")
+mast_out.index.name = "year"
+mast_out = mast_out.rename(columns=lambda c: c.replace("snow_lt", "sfd_lt"))
+mast_out.to_csv(mast_csv)
+print(f"\n  Saved: {mast_csv}")
+
 # ============================================================
 # Gap-filling uncertainty: count filled days during snow-free period
 # ============================================================
@@ -381,8 +389,8 @@ colors = cmap(np.linspace(0.1, 0.9, len(modis_thresholds)))
 
 # Disko has insufficient mast pixel data for scatter validation panels —
 # produce a single time series panel only.
-single_panel = (site == "disko")
-
+#single_panel = (site == "disko")
+single_panel = False
 if single_panel:
     fig2, ax_ts = plt.subplots(figsize=(6.85, 3.5))
     fig2.subplots_adjust(top=0.93, bottom=0.13, left=0.09, right=0.97)

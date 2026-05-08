@@ -69,6 +69,10 @@ t2m_daily = t2m.resample(time="1D").mean()
 # 2. PDD from CARRA (calendar year)
 # ============================================================
 print("Computing CARRA PDD...")
+# Require >= 320 days of CARRA data per calendar year to avoid partial-year sums
+carra_days_per_year = t2m_daily.notnull().resample(time="YE").sum()
+valid_carra_years = carra_days_per_year["time"].dt.year.values[carra_days_per_year.values >= 320]
+
 pdd_daily = t2m_daily.where(t2m_daily > 0, 0)
 pdd_annual = pdd_daily.resample(time="YE").sum()
 
@@ -76,6 +80,7 @@ pdd_carra = pd.DataFrame({
     "year": pdd_annual["time"].dt.year.values,
     "pdd_carra": pdd_annual.values
 }).set_index("year")
+pdd_carra = pdd_carra[pdd_carra.index.isin(valid_carra_years)]
 
 print(f"  CARRA PDD: {pdd_carra.index[0]}–{pdd_carra.index[-1]}")
 
@@ -90,6 +95,7 @@ melt_days = pd.DataFrame({
     "year": melt_days_annual["time"].dt.year.values,
     "melt_days": melt_days_annual.values.astype(int)
 }).set_index("year")
+melt_days = melt_days[melt_days.index.isin(valid_carra_years)]
 
 print(f"  Melt days: {melt_days.index[0]}–{melt_days.index[-1]}")
 
@@ -99,7 +105,11 @@ print(f"  Melt days: {melt_days.index[0]}–{melt_days.index[-1]}")
 print("Computing winter precipitation (hydro year, T < 0°C)...")
 ds_tp = xr.load_dataset(carra_tp_path)
 i_tp = int(np.where(ds_tp["name"].values == station)[0][0])
-tp = ds_tp["tp"].isel(station=i_tp).sum(dim="step")
+# CARRA tp is accumulated from forecast init: step=6h is 0-6h, step=18h is 0-18h.
+# Take the difference to get the non-overlapping 6-18h increment per 12h cycle,
+# giving two non-overlapping 12h blocks per day with no double-counting.
+tp_raw = ds_tp["tp"].isel(station=i_tp)
+tp = tp_raw.isel(step=1) - tp_raw.isel(step=0)
 
 # Convert to mm if in metres
 tp_units = ds_tp["tp"].attrs.get("units", "").lower()

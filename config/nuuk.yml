@@ -16,7 +16,7 @@ ice_shp: /home/shl/mdrev/data/sdfi/G250_VEKTOR/Is.shp
 
 # In situ validation
 station_id: nuuk
-aws_stations: data/mast_locations.csv
+aws_stations: data/mast_locations_proximity.csv
 gem_dir: /home/shl/mdrev/data/GEM/nuuk/
 insitu_temperature: "Air_temperature_200_cm_30min_average_10.17897_PGN3-7597_data.txt"
 insitu_snowdepth: "Snow depth (m)_10.17897_19YH-DB49_data.txt"
