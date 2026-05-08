@@ -397,9 +397,10 @@ if single_panel:
 else:
     # Two-row layout: full-width time series on top, two scatter panels below.
     # Width = 174 mm (double-column journal standard), height scaled to fit.
-    fig2 = plt.figure(figsize=(6.85, 8.0))
-    gs   = fig2.add_gridspec(2, 2, hspace=0.42, wspace=0.38,
-                              top=0.95, bottom=0.07, left=0.09, right=0.97)
+    fig2 = plt.figure(figsize=(6.85, 5.5))
+    gs   = fig2.add_gridspec(2, 2, height_ratios=[1, 1.1],
+                              hspace=0.18, wspace=0.38,
+                              top=0.95, bottom=0.08, left=0.09, right=0.97)
     ax_ts = fig2.add_subplot(gs[0, :])   # top: full width
     ax_s1 = fig2.add_subplot(gs[1, 0])  # bottom left
     ax_s2 = fig2.add_subplot(gs[1, 1])  # bottom right
