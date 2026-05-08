@@ -12,7 +12,9 @@ import numpy as np
 import pyproj
 import xarray as xr
 import matplotlib.patheffects as pe
+import pandas as pd
 from matplotlib.collections import LineCollection
+from matplotlib.patches import Rectangle
 from shapely.geometry import LineString, MultiPoint, Point, box as shapely_box
 
 workingdir = Path("/home/shl/mdrev/projects/modis/snow_cover")
@@ -51,11 +53,19 @@ SITES = {
 # ---------------------------------------------------------------------------
 # Basemap — load once, repair invalid geometries
 # ---------------------------------------------------------------------------
+_proximity = pd.read_csv(workingdir / "data" / "mast_locations_proximity.csv")
+_masts     = pd.read_csv(workingdir / "data" / "station_metadata_main_masts.csv")
+
 print("Loading SDFI basemap…")
-_land_raw = gpd.read_file(SDFI_DIR / "Land.shp")
+_land_raw    = gpd.read_file(SDFI_DIR / "Land.shp")
 _land_raw["geometry"] = _land_raw.buffer(0)
-_ice_raw  = gpd.read_file(SDFI_DIR / "Is.shp")
+_ice_raw     = gpd.read_file(SDFI_DIR / "Is.shp")
 _ice_raw["geometry"]  = _ice_raw.buffer(0)
+_rivers_raw  = gpd.read_file(SDFI_DIR / "Elve.shp")       # river/stream centrelines
+_valleys_raw = gpd.read_file(SDFI_DIR / "FLODDAL.shp")    # river-valley polygons
+_valleys_raw["geometry"] = _valleys_raw.buffer(0)
+_lakes_raw   = gpd.read_file(SDFI_DIR / "Soe.shp")        # lakes and ponds
+_lakes_raw["geometry"] = _lakes_raw.buffer(0)
 
 
 def _clip_basemap(crs, xmin, ymin, xmax, ymax, pad=10_000):
@@ -64,8 +74,11 @@ def _clip_basemap(crs, xmin, ymin, xmax, ymax, pad=10_000):
         crs=crs,
     )
     return (
-        gpd.clip(_land_raw.to_crs(crs), clip),
-        gpd.clip(_ice_raw.to_crs(crs),  clip),
+        gpd.clip(_land_raw.to_crs(crs),    clip),
+        gpd.clip(_ice_raw.to_crs(crs),     clip),
+        gpd.clip(_rivers_raw.to_crs(crs),  clip),
+        gpd.clip(_valleys_raw.to_crs(crs), clip),
+        gpd.clip(_lakes_raw.to_crs(crs),   clip),
     )
 
 
@@ -185,12 +198,13 @@ def _add_graticule_labels(ax, parallels, meridians, xmin, xmax, ymin, ymax):
 
 
 # ---------------------------------------------------------------------------
-# Figure
+# One figure per site
 # ---------------------------------------------------------------------------
-fig, axes = plt.subplots(1, 3, figsize=(14, 6))
-fig.subplots_adjust(wspace=0.35)
+outdir = workingdir / "figures"
+outdir.mkdir(exist_ok=True)
 
-for ax, (name, cfg) in zip(axes, SITES.items()):
+for name, cfg in SITES.items():
+    fig, ax = plt.subplots(figsize=(7, 7))
     crs = cfg["crs"]
     print(f"Rendering {name}…")
 
@@ -205,10 +219,16 @@ for ax, (name, cfg) in zip(axes, SITES.items()):
     ds.close()
 
     # --- Main map basemap -----------------------------------------------
-    land, ice = _clip_basemap(crs, xmin_r, ymin_r, xmax_r, ymax_r)
+    land, ice, rivers, valleys, lakes = _clip_basemap(crs, xmin_r, ymin_r, xmax_r, ymax_r)
     ax.set_facecolor("#cde2f0")
-    land.plot(ax=ax, color="#e8e0ce", edgecolor="#555555", linewidth=0.3, zorder=2)
-    ice.plot( ax=ax, color="#eef2ff", edgecolor="#9999cc", linewidth=0.2, zorder=3)
+    land.plot(   ax=ax, color="#e8e0ce", edgecolor="#555555", linewidth=0.3, zorder=2)
+    ice.plot(    ax=ax, color="#eef2ff", edgecolor="#9999cc", linewidth=0.2, zorder=3)
+    if not valleys.empty:
+        valleys.plot(ax=ax, color="#b8d4e8", edgecolor="none",              zorder=4)
+    if not lakes.empty:
+        lakes.plot(  ax=ax, color="#cde2f0", edgecolor="#6baed6", linewidth=0.3, zorder=5)
+    if not rivers.empty:
+        rivers.plot( ax=ax, color="#4292c6", linewidth=0.4,                 zorder=6)
 
     # Main AOI boundary
     #gpd.read_file(cfg["aoi_shp"]).to_crs(crs).plot(
@@ -225,6 +245,7 @@ for ax, (name, cfg) in zip(axes, SITES.items()):
     ax.set_title(name, fontsize=10, fontweight="bold", pad=24)
 
     # Main graticule
+    tf_fwd  = pyproj.Transformer.from_crs("EPSG:4326", crs, always_xy=True)
     tf_inv  = pyproj.Transformer.from_crs(crs, "EPSG:4326", always_xy=True)
     corners = [tf_inv.transform(px, py) for px, py in
                [(xmin_r, ymin_r), (xmax_r, ymin_r), (xmin_r, ymax_r), (xmax_r, ymax_r)]]
@@ -246,6 +267,12 @@ for ax, (name, cfg) in zip(axes, SITES.items()):
         ax.plot(xy[:, 0], xy[:, 1], "--", color="#888888", lw=0.35, alpha=0.6, zorder=1)
     _add_graticule_labels(ax, parallels, meridians, xmin_r, xmax_r, ymin_r, ymax_r)
 
+    # Main mast marker on the main map
+    mast = _masts[_masts.station == name].iloc[0]
+    mast_x, mast_y = tf_fwd.transform(mast.lon, mast.lat)
+    ax.plot(mast_x, mast_y, marker="*", color="white", markersize=9,
+            markeredgecolor="black", markeredgewidth=0.7, zorder=8, clip_on=True)
+
     # --- Inset -----------------------------------------------------------
     small_aoi = gpd.read_file(cfg["small_shp"]).to_crs(crs)
     sb        = small_aoi.total_bounds        # [xmin, ymin, xmax, ymax]
@@ -258,13 +285,21 @@ for ax, (name, cfg) in zip(axes, SITES.items()):
     x_sub = x[(x >= xi_min - res_x)     & (x <= xi_max + res_x)]
     y_sub = y[(y >= yi_min - res_y_abs)  & (y <= yi_max + res_y_abs)]
 
-    inset_ax = ax.inset_axes(cfg["inset_loc"])
+    inset_ax = ax.inset_axes(cfg["inset_loc"], zorder=10)
     inset_ax.set_facecolor("#cde2f0")
 
     # Basemap in inset (no extra pad — we want just what's in view)
-    land_i, ice_i = _clip_basemap(crs, xi_min, yi_min, xi_max, yi_max, pad=0)
+    land_i, ice_i, rivers_i, valleys_i, lakes_i = _clip_basemap(
+        crs, xi_min, yi_min, xi_max, yi_max, pad=0
+    )
     land_i.plot(ax=inset_ax, color="#e8e0ce", edgecolor="#555555", linewidth=0.5, zorder=2)
     ice_i.plot( ax=inset_ax, color="#eef2ff", edgecolor="#9999cc", linewidth=0.3, zorder=3)
+    if not valleys_i.empty:
+        valleys_i.plot(ax=inset_ax, color="#b8d4e8", edgecolor="none",              zorder=4)
+    if not lakes_i.empty:
+        lakes_i.plot(  ax=inset_ax, color="#cde2f0", edgecolor="#6baed6", linewidth=0.4, zorder=5)
+    if not rivers_i.empty:
+        rivers_i.plot( ax=inset_ax, color="#4292c6", linewidth=0.7,                 zorder=6)
 
     # Pixel grid
     if len(x_sub) > 0 and len(y_sub) > 0:
@@ -275,6 +310,22 @@ for ax, (name, cfg) in zip(axes, SITES.items()):
             )
         )
 
+    # Proximity pixel: find the raster cell containing the mast and fill it
+    prox = _proximity[_proximity.stid == name.lower()].iloc[0]
+    prox_x, prox_y = tf_fwd.transform(prox.lon, prox.lat)
+    ix = np.argmin(np.abs(x - prox_x))
+    iy = np.argmin(np.abs(y - prox_y))
+    inset_ax.add_patch(Rectangle(
+        (x[ix] - res_x / 2, y[iy] - res_y_abs / 2),
+        res_x, res_y_abs,
+        facecolor="#fc8d59", alpha=0.55,
+        edgecolor="#d73027", linewidth=1.5,
+        zorder=5,
+    ))
+
+    # Main mast marker on the inset
+    inset_ax.plot(mast_x, mast_y, marker="*", color="white", markersize=10,
+                  markeredgecolor="black", markeredgewidth=0.7, zorder=8)
 
     inset_ax.set_xlim(xi_min, xi_max)
     inset_ax.set_ylim(yi_min, yi_max)
@@ -312,12 +363,8 @@ for ax, (name, cfg) in zip(axes, SITES.items()):
     # Connect inset to its location on the main map
     ax.indicate_inset_zoom(inset_ax, edgecolor="#333333", alpha=0.7, lw=0.8)
 
-# ---------------------------------------------------------------------------
-# Save
-# ---------------------------------------------------------------------------
-outdir = workingdir / "figures"
-outdir.mkdir(exist_ok=True)
-for ext in ("png", "pdf"):
-    outpath = outdir / f"site_maps.{ext}"
-    plt.savefig(outpath, dpi=300, bbox_inches="tight")
-    print(f"Saved: {outpath}")
+    for ext in ("png", "pdf"):
+        outpath = outdir / f"site_map_{name.lower()}.{ext}"
+        plt.savefig(outpath, dpi=300, bbox_inches="tight")
+        print(f"Saved: {outpath}")
+    plt.close(fig)
