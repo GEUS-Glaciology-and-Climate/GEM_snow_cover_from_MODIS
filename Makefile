@@ -25,6 +25,14 @@ terrain:
 validate:
 	$(PYTHON) scripts/validate_mast_pixel.py --site $(SITE)
 
+validate-winter-precip:
+	$(PYTHON) scripts/validate_winter_precip.py --site $(SITE)
+
+validate-winter-precip-all:
+	$(PYTHON) scripts/validate_winter_precip.py --site zackenberg
+	$(PYTHON) scripts/validate_winter_precip.py --site nuuk
+	$(PYTHON) scripts/validate_winter_precip.py --site disko
+
 fill-glaciers:
 	$(PYTHON) scripts/fill_glacier_scf.py --site $(SITE)
 
@@ -63,4 +71,4 @@ analyse: derive-climate trends driver-trends correlations regression
 
 .PHONY: download clip mask snow-free-days terrain validate validate-glacier fill-glaciers \
         fill-glaciers-xgb elevation-bands preprocess derive-climate trends driver-trends \
-        correlations regression analyse
+        correlations regression analyse validate-winter-precip validate-winter-precip-all
