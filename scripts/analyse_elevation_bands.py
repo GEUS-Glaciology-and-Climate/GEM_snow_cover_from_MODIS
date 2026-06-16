@@ -8,8 +8,10 @@ Snow-free is defined as NDSI < 40% (calibrated threshold).
 
 Outputs:
   results/csvs/{site}/sfd_elevation_bands_{source}.csv
+  results/csvs/{site}/sfd_elevation_band_trends_{source}.csv
   figures/{site}/sfd_elevation_bands_{source}_heatmap.png
   figures/{site}/sfd_elevation_bands_{source}_lines.png
+  figures/{site}/sfd_elevation_band_trends_{source}.png
   figures/{site}/sfd_elevation_bands_comparison_lines.png  (if both sources present)
   figures/{site}/sfd_elevation_bands_comparison_heatmap.png (if both sources present)
 
@@ -25,6 +27,7 @@ import xarray as xr
 import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
+import pymannkendall as mk
 from pathlib import Path
 
 THRESHOLD    = 40
@@ -333,3 +336,100 @@ if csv_masked.exists() and csv_filled.exists():
     fig_d.savefig(out_dir / "sfd_elevation_bands_comparison_heatmap.png", dpi=150)
     plt.close(fig_d)
     print("Saved difference heatmap")
+
+# ============================================================
+# Trend analysis: Mann-Kendall per elevation band
+# ============================================================
+MIN_YEARS_TREND = 10   # minimum years of data required to test a band
+alpha           = 0.05
+
+print("\nMann-Kendall trend test per elevation band...")
+trend_records = []
+
+for elev in pivot.index:
+    series = pivot.loc[elev].dropna()
+    if len(series) < MIN_YEARS_TREND:
+        continue
+    result = mk.original_test(series.values, alpha=alpha)
+    trend_records.append({
+        "elev_lower":  elev,
+        "elev_center": elev + BIN_WIDTH / 2,
+        "n_years":     len(series),
+        "slope":       result.slope,
+        "intercept":   result.intercept,
+        "p_value":     result.p,
+        "trend":       result.trend,
+        "significant": result.p < alpha,
+    })
+
+trends_df = pd.DataFrame(trend_records)
+trends_csv = csv_dir / f"sfd_elevation_band_trends_{source}.csv"
+trends_df.to_csv(trends_csv, index=False)
+print(f"Saved trends CSV: {trends_csv}")
+
+# Print summary
+print(f"\n{'Elevation (m)':<16} {'n':>4} {'Slope (d/yr)':>13} {'p-value':>9} {'Sig':>5}")
+print("-" * 50)
+for _, row in trends_df.iterrows():
+    sig = "Yes" if row["significant"] else "No"
+    print(f"  {row['elev_lower']:>4.0f}–{row['elev_lower']+BIN_WIDTH:<4.0f}  "
+          f"{row['n_years']:>4.0f}  {row['slope']:>13.3f}  {row['p_value']:>9.4f}  {sig:>5}")
+
+# ── Figure: Sen's slope vs elevation ─────────────────────────
+if len(trends_df) == 0:
+    print("No bands with sufficient data for trend plot.")
+else:
+    fig_t, ax_t = plt.subplots(figsize=(6, 8))
+
+    sig_mask  = trends_df["significant"].values
+    slopes    = trends_df["slope"].values
+    centers   = trends_df["elev_center"].values
+
+    # Color: steelblue = significant positive, firebrick = significant negative, gray = n.s.
+    bar_colors = []
+    for s, sig in zip(slopes, sig_mask):
+        if not sig:
+            bar_colors.append("lightgray")
+        elif s > 0:
+            bar_colors.append("steelblue")
+        else:
+            bar_colors.append("firebrick")
+
+    ax_t.barh(centers, slopes, height=BIN_WIDTH * 0.8,
+              color=bar_colors, edgecolor="white", linewidth=0.5)
+    ax_t.axvline(0, color="black", linewidth=0.8)
+
+    # Annotate p-values on significant bars
+    for _, row in trends_df[trends_df["significant"]].iterrows():
+        x_offset = 0.02 * (slopes.max() - slopes.min()) if slopes.max() != slopes.min() else 0.1
+        ax_t.text(
+            row["slope"] + (x_offset if row["slope"] >= 0 else -x_offset),
+            row["elev_center"],
+            f"p={row['p_value']:.3f}",
+            va="center", ha="left" if row["slope"] >= 0 else "right",
+            fontsize=7.5,
+        )
+
+    # Legend patches
+    from matplotlib.patches import Patch
+    legend_elements = [
+        Patch(facecolor="firebrick",  label="Significant decrease"),
+        Patch(facecolor="steelblue",  label="Significant increase"),
+        Patch(facecolor="lightgray",  label="Not significant"),
+    ]
+    ax_t.legend(handles=legend_elements, fontsize=8, loc="lower right")
+
+    ax_t.set_xlabel("Sen's slope (d yr$^{-1}$)")
+    ax_t.set_ylabel("Elevation (m a.s.l.)")
+    ax_t.set_title(
+        f"{site.capitalize()}: Trend in snow-free days by elevation\n"
+        f"({source}, NDSI < {THRESHOLD}%, α = {alpha})"
+    )
+    ax_t.yaxis.set_major_locator(ticker.MultipleLocator(200))
+    ax_t.yaxis.set_minor_locator(ticker.MultipleLocator(100))
+    ax_t.grid(True, axis="x", alpha=0.3)
+    fig_t.tight_layout()
+    out_trend = out_dir / f"sfd_elevation_band_trends_{source}.png"
+    fig_t.savefig(out_trend, dpi=150)
+    plt.close(fig_t)
+    print(f"Saved trend plot: {out_trend.name}")
