@@ -69,6 +69,10 @@ regression:
 
 analyse: derive-climate trends driver-trends correlations regression
 
+noaa-trends:
+	$(PYTHON) scripts/analyse_noaa_nh_trends.py
+
 .PHONY: download clip mask snow-free-days terrain validate validate-glacier fill-glaciers \
         fill-glaciers-xgb elevation-bands preprocess derive-climate trends driver-trends \
-        correlations regression analyse validate-winter-precip validate-winter-precip-all
+        correlations regression analyse validate-winter-precip validate-winter-precip-all \
+        noaa-trends

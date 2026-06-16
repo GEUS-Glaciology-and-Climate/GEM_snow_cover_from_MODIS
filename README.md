@@ -116,6 +116,28 @@ Output: `results/csvs/{site}/climate_predictors_{site}.csv`.
 
 All analysis scripts write figures to `figures/{site}/` and LaTeX table snippets alongside them.
 
+### 12. NOAA NH snow cover extent trends
+
+    make noaa-trends
+    # python scripts/analyse_noaa_nh_trends.py
+
+Analyses the NOAA Climate Data Record of Northern Hemisphere Snow Cover Extent (NH SCE CDR),
+a weekly binary product on a ~190 km polar stereographic grid (1967–present). Two analyses:
+
+1. **Zackenberg pixel**: snow-free days derived from the nearest grid cell, compared with
+   MODIS-derived snow-free days (NDSI < 40%). Trends tested for the full record and 2001–2025.
+2. **NH extent**: total snow-covered land area (M km²) for the full NH and two longitudinal
+   subdomains (North America & Greenland: −180° to 0°; Eurasia & Asia: 0° to 180°).
+   Trends tested for the full record and the MODIS era (2000–2025).
+
+Outputs: `figures/noaa_nh_extent_trends.png`, `figures/{site}/noaa_nh_snow_cover_trends.png`,
+CSVs in `results/csvs/`, LaTeX table in `results/latex/{site}/`.
+
+**Data source**: NOAA/NCEI Climate Data Record of Northern Hemisphere Snow Cover Extent,
+version 1 (Rutgers University Global Snow Lab).
+Metadata: https://www.ncei.noaa.gov/access/metadata/landing-page/bin/iso?id=gov.noaa.ncdc:C00756
+Local file: `/home/shl/mdrev/data/noaa/netcdfs/full/`
+
 ## Project Structure
 
     ├── environment.yml
@@ -141,6 +163,7 @@ All analysis scripts write figures to `figures/{site}/` and LaTeX table snippets
     │   ├── analyse_driver_trends.py     # Trends in PDD, winter precip, and snow-free days
     │   ├── analyse_correlations.py      # Pearson and partial correlations + VIF
     │   ├── analyse_regression.py        # OLS regression with residual diagnostics
+    │   ├── analyse_noaa_nh_trends.py    # NOAA NH SCE CDR trends (full NH + subdomains)
     │   └── publish_ndsi.py              # Export clean masked NDSI NetCDFs for publication
     ├── data/
     │   └── CARRA/                       # CARRA reanalysis NetCDFs (t2m, tp at stations)
