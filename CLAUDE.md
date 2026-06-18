@@ -72,6 +72,6 @@ figures/zackenberg/  # Output plots and LaTeX tables
 
 - NDSI threshold of **40%** is the primary threshold used in trend/regression analysis (sensitivity tested across 10–70%).
 - MODIS flag values (200–255) represent missing/cloud/water — only values ≤100 are valid NDSI.
-- Hydrological year runs **September to September** for winter precipitation.
+- Hydrological year runs **October 1 to September 30** for winter precipitation (`YE-SEP` in pandas/xarray = year ending September 30).
 - Statistical significance threshold: **α = 0.05** throughout.
 - Outputs include both PNG figures and LaTeX `.tex` table snippets for direct inclusion in papers.

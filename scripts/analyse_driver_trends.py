@@ -3,7 +3,7 @@ Trend Analysis of Climate Drivers
 ===============================================
 Tests for trends in the key drivers of snow-free days:
   1. PDD (Positive Degree Days) — calendar year
-  2. Winter precipitation — hydrological year (Sept–Sept)
+  2. Winter precipitation — hydrological year (Oct–Sep)
   3. Snow-free days (for comparison)
 
 Uses Mann-Kendall test and Sen's slope estimator.

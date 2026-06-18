@@ -3,7 +3,7 @@ Derive Climate Predictors for Snow-Free Day Analysis
 =================================================================
 Computes from CARRA reanalysis:
   1. PDD (Positive Degree Days) — calendar year sum of positive daily means
-  2. Winter precipitation — hydrological year (Sept–Sept) total precip when T < 0°C
+  2. Winter precipitation — hydrological year (Oct–Sep) total precip when T < 0°C
   3. Melt days — calendar year count of days with daily mean T > -3°C
 
 Computes from in situ (GEM station):
@@ -100,9 +100,9 @@ melt_days = melt_days[melt_days.index.isin(valid_carra_years)]
 print(f"  Melt days: {melt_days.index[0]}–{melt_days.index[-1]}")
 
 # ============================================================
-# 4. Winter precipitation from CARRA (hydrological year, Sept–Sept)
+# 4. Winter precipitation from CARRA (hydrological year, Oct–Sep)
 # ============================================================
-print("Computing winter precipitation (hydro year, T < 0°C)...")
+print("Computing winter precipitation (hydro year Oct–Sep, T < 0°C)...")
 ds_tp = xr.load_dataset(carra_tp_path)
 i_tp = int(np.where(ds_tp["name"].values == station)[0][0])
 # CARRA tp is accumulated from forecast init: step=6h is 0-6h, step=18h is 0-18h.
@@ -122,10 +122,10 @@ tp, t2m_aligned = xr.align(tp, t2m, join="inner")
 # Keep only precip when T < 0°C
 tp_cold = tp.where(t2m_aligned < 0)
 
-# Hydrological year totals (year ending in September)
+# Hydrological year totals (Oct 1 – Sep 30; YE-SEP = year ending Sep 30)
 wp_hydro = tp_cold.resample(time="YE-SEP").sum()
 
-# The hydro year label: year ending Sept 2001 represents winter going into 2001 melt
+# The hydro year label: Oct 2000–Sep 2001 is labeled year 2001 (the melt year)
 winter_precip = pd.DataFrame({
     "year": wp_hydro["time"].dt.year.values,
     "winter_precip_mm": wp_hydro.values

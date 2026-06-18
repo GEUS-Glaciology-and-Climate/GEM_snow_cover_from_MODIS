@@ -46,8 +46,8 @@ positive_days_per_year.loc[1991:2024].to_csv('results/csvs/CARRA_days_with_posit
 # if you want to treat zeros as positive:
 # positive_days_per_year = (t2m_daymax >= 0).groupby(t2m_daymax.index.year).sum().astype(int)
 
-# ---- Hydrological-year totals (September to September)
-hyd_year = tp_cold.resample(time='YE-SEP').sum()   # year ends in September
+# ---- Hydrological-year totals (Oct 1 – Sep 30; YE-SEP = year ending Sep 30)
+hyd_year = tp_cold.resample(time='YE-SEP').sum()
 hyd_year = hyd_year.assign_coords(year=hyd_year['time.year'])
 
 
