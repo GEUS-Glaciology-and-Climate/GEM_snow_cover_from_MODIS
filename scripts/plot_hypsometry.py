@@ -46,12 +46,12 @@ SITES = [
     dict(name="zackenberg", label="Zackenberg", epsg=32627,
          dem="netcdf/zackenberg/zackenberg_dem_32m.tif",
          aoi="shp/zackenberg_aoi.gpkg"),
-    dict(name="nuuk",        label="Kobbefjord", epsg=32622,
-         dem="netcdf/nuuk/nuuk_dem_32m.tif",
-         aoi="shp/nuuk_aoi.shp"),
     dict(name="disko",       label="Disko",       epsg=32622,
          dem="netcdf/disko/disko_dem_32m.tif",
          aoi="shp/disko_aoi_v2.shp"),
+    dict(name="nuuk",        label="Kobbefjord", epsg=32622,
+         dem="netcdf/nuuk/nuuk_dem_32m.tif",
+         aoi="shp/nuuk_aoi.shp"),
 ]
 
 # ---------------------------------------------------------------------------
